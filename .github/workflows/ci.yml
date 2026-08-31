@@ -1,0 +1,29 @@
+name: Macgrubernetes CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: macos-14
+    steps:
+      - name: Check out Macgrubernetes
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.x'
+
+      - name: Set up Rust target
+        run: rustup target add aarch64-apple-darwin
+
+      - name: Test pinned components
+        run: make test
+
+      - name: Build Darwin/arm64 bundle
+        run: make build
