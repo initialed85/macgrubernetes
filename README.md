@@ -95,6 +95,8 @@ checkouts:
   route interface using `ipconfig getifaddr`
 - the VXLAN remote defaults to the API server host
 - peer kubeconfig defaults to `$KUBECONFIG` or `${HOME}/.kube/config`
+- if a bundled executable retains macOS quarantine metadata, the wrapper warns
+  and uses `sudo` to remove quarantine only from the binaries it will run
 - a token is read from `MACGRUBER_TOKEN_FILE` or
   `${HOME}/.macgrubernetes/token` when present (the underlying `MACLET_TOKEN`
   environment variable is also inherited); a token is only required for a

@@ -138,6 +138,61 @@ if [[ ! -x "$macker_binary" ]] && ! has_flag --macker-binary "$@"; then
     exit 1
 fi
 
+# macOS may quarantine every executable extracted from a downloaded archive.
+# Remove that attribute only from the binaries this launcher will use, and only
+# when it is present. The explicit warning is intentional because sudo is used.
+unquarantine_binary() {
+    local path=$1
+    local name=$2
+    [[ -e "$path" ]] || return 0
+    xattr -p com.apple.quarantine "$path" >/dev/null 2>&1 || return 0
+    printf '%s|%s\n' "$name" "$path"
+}
+
+unquarantine_binaries() {
+    local -a names=()
+    local -a paths=()
+    local name path index names_text=''
+    while IFS='|' read -r name path; do
+        [[ -n "$name" && -n "$path" ]] || continue
+        names+=("$name")
+        paths+=("$path")
+    done < <(
+        unquarantine_binary "$maclet_binary" maclet
+        unquarantine_binary "$macker_binary" macker
+        if [[ "${MACGRUBER_DISABLE_VXLAN:-0}" != 1 && "${MACGRUBER_DISABLE_VXLAN:-0}" != true ]]; then
+            unquarantine_binary "$vxlan_binary" darwin-vxlan
+        fi
+    )
+    ((${#paths[@]} > 0)) || return 0
+
+    for name in "${names[@]}"; do
+        [[ -n "$names_text" ]] && names_text+=', '
+        names_text+=$name
+    done
+    printf 'macgrubernetes: warning: using sudo to un-quarantine %s\n' "$names_text" >&2
+    printf '%s\n' 'macgrubernetes: warning: this removes macOS Gatekeeper quarantine; only continue with a trusted release' >&2
+    for index in "${!paths[@]}"; do
+        path=${paths[$index]}
+        if ! sudo xattr -d com.apple.quarantine "$path"; then
+            printf 'macgrubernetes: error: failed to un-quarantine %s: %s\n' "${names[$index]}" "$path" >&2
+            exit 1
+        fi
+    done
+}
+
+# CLI binary overrides are appended below and take precedence over generated
+# defaults, so inspect those effective paths before removing quarantine.
+effective_macker_binary=$macker_binary
+cli_macker_binary=$(argument_value --macker-binary "$@" || true)
+[[ -n "$cli_macker_binary" ]] && effective_macker_binary=$cli_macker_binary
+effective_vxlan_binary=$vxlan_binary
+cli_vxlan_binary=$(argument_value --vxlan-binary "$@" || true)
+[[ -n "$cli_vxlan_binary" ]] && effective_vxlan_binary=$cli_vxlan_binary
+macker_binary=$effective_macker_binary
+vxlan_binary=$effective_vxlan_binary
+unquarantine_binaries
+
 args=(join --state-dir "$state_dir" --macker-binary "$macker_binary")
 if [[ "${MACGRUBER_DISABLE_VXLAN:-0}" != 1 && "${MACGRUBER_DISABLE_VXLAN:-0}" != true ]]; then
     if [[ ! -x "$vxlan_binary" ]] && ! has_flag --vxlan-binary "$@"; then
