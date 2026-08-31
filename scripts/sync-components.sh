@@ -11,11 +11,11 @@ require_command git
 
 mkdir -p "$MACGRUBER_BUILD_ROOT/src"
 
-while IFS='|' read -r component repository ref commit remainder; do
+while IFS='|' read -r component repository pattern tag commit remainder; do
     [[ -z "${component//[[:space:]]/}" ]] && continue
     [[ "$component" == \#* ]] && continue
     [[ -n "${remainder:-}" ]] && die "invalid lockfile entry for $component"
-    [[ -n "$repository" && -n "$ref" && -n "$commit" ]] || die "incomplete lockfile entry for $component"
+    [[ -n "$repository" && -n "$pattern" && -n "$tag" && -n "$commit" ]] || die "incomplete lockfile entry for $component"
 
     case "$component" in
         maclet|macker|darwin-vxlan) ;;
@@ -36,14 +36,13 @@ while IFS='|' read -r component repository ref commit remainder; do
     fi
 
     git -C "$destination" remote set-url origin "$repository"
-    log "fetching $component ref=$ref"
-    git -C "$destination" fetch --prune origin "$ref"
-    if ! git -C "$destination" cat-file -e "$commit^{commit}" 2>/dev/null; then
-        die "locked commit $commit is not available in $component after fetching $ref"
-    fi
+    log "fetching $component tag=$tag"
+    git -C "$destination" fetch --prune origin "refs/tags/$tag:refs/tags/$tag"
+    tag_commit=$(git -C "$destination" rev-parse "$tag^{commit}" 2>/dev/null || true)
+    [[ "$tag_commit" == "$commit" ]] || die "$component tag $tag resolves to ${tag_commit:-nothing}, expected $commit"
     git -C "$destination" checkout --detach --quiet "$commit"
 
     actual=$(git -C "$destination" rev-parse HEAD)
     [[ "$actual" == "$commit" ]] || die "$component checked out $actual, expected $commit"
-    log "ready $component @ ${actual:0:12}"
+    log "ready $component $tag @ ${actual:0:12}"
 done < "$MACGRUBER_LOCKFILE"

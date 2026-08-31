@@ -72,10 +72,14 @@ component_source() {
 }
 
 component_revision() {
+    lock_value "$1" 5
+}
+
+component_tag() {
     lock_value "$1" 4
 }
 
-component_ref() {
+component_tag_pattern() {
     lock_value "$1" 3
 }
 

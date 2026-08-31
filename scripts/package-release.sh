@@ -26,9 +26,14 @@ package_root="$staging/$package_name"
 mkdir -p "$package_root/bin"
 cp "$bin_dir/maclet" "$bin_dir/macker" "$bin_dir/darwin-vxlan" "$package_root/bin/"
 cp "$MACGRUBER_ROOT/components.lock" "$package_root/"
+cp "$MACGRUBER_ROOT/scripts/macgrubernetes.sh" "$package_root/macgrubernetes.sh"
+chmod 0755 "$package_root/macgrubernetes.sh"
 printf '%s\n' "$version" > "$package_root/VERSION"
 if [[ -f "$MACGRUBER_ROOT/README.md" ]]; then
     cp "$MACGRUBER_ROOT/README.md" "$package_root/"
+fi
+if [[ -f "$MACGRUBER_ROOT/macgruber.png" ]]; then
+    cp "$MACGRUBER_ROOT/macgruber.png" "$package_root/"
 fi
 
 archive="$MACGRUBER_ROOT/dist/$package_name.tar.gz"

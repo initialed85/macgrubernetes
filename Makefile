@@ -8,7 +8,7 @@ sync:
 	./scripts/sync-components.sh
 
 update:
-	COMPONENT="$(COMPONENT)" ./scripts/update-lock.sh
+	COMPONENT="$(COMPONENT)" ./scripts/update.sh
 
 build: sync
 	./scripts/build-all.sh
