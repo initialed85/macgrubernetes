@@ -23,6 +23,9 @@ jobs:
       - name: Set up Rust target
         run: rustup target add aarch64-apple-darwin
 
+      - name: Validate shell scripts
+        run: for script in scripts/*.sh; do bash -n "$script"; done
+
       - name: Test pinned components
         run: make test
 

@@ -20,8 +20,9 @@ The source remains split across focused repositories:
 
 Macgrubernetes pins compatible component release tags and commits in
 [`components.lock`](components.lock), pulls those revisions, builds the binaries
-together, and assembles a release bundle. This repository intentionally contains integration tooling and release
-artifacts rather than copies of the component source trees.
+together, and assembles a release bundle. This repository intentionally contains
+integration tooling and release artifacts rather than copies of the component
+source trees.
 
 ## Requirements
 
@@ -109,6 +110,31 @@ override generated defaults. Common environment overrides include
 `MACGRUBER_INTERFACE`, `MACGRUBER_NODE_IP`, `MACGRUBER_EXTERNAL_IP`,
 `MACGRUBER_VXLAN_LOCAL`, `MACGRUBER_VXLAN_REMOTE`, `MACGRUBER_NODE_NAME`, and
 `MACGRUBER_STATE_DIR`.
+
+## Install the latest release
+
+On an Apple Silicon Mac, install the latest non-prerelease release with the
+cheeky one-liner:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/initialed85/macgrubernetes/master/scripts/install.sh | bash
+```
+
+The installer verifies the release checksum and stores downloads, versioned
+releases, and stable launch links under `${HOME}/.macgrubernetes`. It prints the
+exact command to run when installation finishes. Set `MACGRUBER_INSTALL_DIR`
+when a different location is required:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/initialed85/macgrubernetes/master/scripts/install.sh \\
+  | MACGRUBER_INSTALL_DIR="$HOME/opt/macgrubernetes" bash
+```
+
+The installed launcher is then available at:
+
+```sh
+${HOME}/.macgrubernetes/macgrubernetes.sh
+```
 
 ## Local component development
 
