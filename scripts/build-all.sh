@@ -47,4 +47,10 @@ fi
 [[ -x "$darwin_vxlan_binary" ]] || die "darwin-vxlan build did not produce $darwin_vxlan_binary"
 cp "$darwin_vxlan_binary" "$MACGRUBER_BUILD_ROOT/bin/darwin-vxlan"
 
+log "building bundled skopeo $MACGRUBER_SKOPEO_VERSION ($MACGRUBER_GOOS/$MACGRUBER_GOARCH)"
+CGO_ENABLED=0 GOOS="$MACGRUBER_GOOS" GOARCH="$MACGRUBER_GOARCH" \
+    GOBIN="$MACGRUBER_BUILD_ROOT/bin" \
+    go install -tags containers_image_openpgp \
+    "go.podman.io/skopeo/cmd/skopeo@$MACGRUBER_SKOPEO_VERSION"
+
 log "binaries written to $MACGRUBER_BUILD_ROOT/bin"

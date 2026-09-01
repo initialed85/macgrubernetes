@@ -52,7 +52,8 @@ Run component unit tests, vet Go code, and run the mocked VXLAN test suite:
 make test
 ```
 
-Build all three Darwin/arm64 binaries into `.build/bin`:
+Build the Darwin/arm64 binaries into `.build/bin` (including the bundled
+registry client):
 
 ```sh
 make build
@@ -64,7 +65,8 @@ Create a release archive under `dist/`:
 make package VERSION=0.1.0
 ```
 
-The package contains the three executables and a launch wrapper:
+The package contains the three runtime executables, the bundled Skopeo
+registry client, and a launch wrapper:
 
 ```text
 macgrubernetes-<version>-darwin-arm64/
@@ -75,7 +77,9 @@ macgrubernetes-<version>-darwin-arm64/
 └── bin/
     ├── maclet
     ├── macker
-    └── darwin-vxlan
+    ├── darwin-vxlan
+    ├── skopeo
+    └── policy.json
 ```
 
 After extracting the archive, start the packaged agent with:
@@ -102,6 +106,10 @@ checkouts:
   `${HOME}/.macgrubernetes/token` when present (the underlying `MACLET_TOKEN`
   environment variable is also inherited); a token is only required for a
   first join, not when existing `${HOME}/.maclet` state is reused
+- the packaged Skopeo client and its default policy are passed to Macker so
+  missing Darwin images can be pulled without a separate Homebrew install;
+  set `MACGRUBER_SKOPEO_POLICY` or `CONTAINERS_POLICY_JSON` to use a stricter
+  policy
 
 The API server is the only operational value the wrapper cannot reliably invent.
 Set `MACGRUBER_SERVER` or pass `--server` when it cannot be obtained from

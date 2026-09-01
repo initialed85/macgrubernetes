@@ -10,9 +10,10 @@ version=${VERSION:-${MACGRUBER_VERSION:-}}
 [[ -n "$version" ]] || die "VERSION is required (for example: make package VERSION=0.1.0)"
 
 bin_dir="$MACGRUBER_BUILD_ROOT/bin"
-for binary in maclet macker darwin-vxlan; do
+for binary in maclet macker darwin-vxlan skopeo; do
     [[ -x "$bin_dir/$binary" ]] || die "missing built binary: $bin_dir/$binary (run make build)"
 done
+[[ -f "$MACGRUBER_ROOT/skopeo-policy.json" ]] || die "missing bundled Skopeo policy: $MACGRUBER_ROOT/skopeo-policy.json"
 
 require_command tar
 require_command shasum
@@ -24,7 +25,8 @@ trap 'rm -rf "$staging"' EXIT
 package_name="macgrubernetes-$version-darwin-arm64"
 package_root="$staging/$package_name"
 mkdir -p "$package_root/bin"
-cp "$bin_dir/maclet" "$bin_dir/macker" "$bin_dir/darwin-vxlan" "$package_root/bin/"
+cp "$bin_dir/maclet" "$bin_dir/macker" "$bin_dir/darwin-vxlan" "$bin_dir/skopeo" "$package_root/bin/"
+cp "$MACGRUBER_ROOT/skopeo-policy.json" "$package_root/bin/policy.json"
 cp "$MACGRUBER_ROOT/components.lock" "$package_root/"
 cp "$MACGRUBER_ROOT/scripts/macgrubernetes.sh" "$package_root/macgrubernetes.sh"
 chmod 0755 "$package_root/macgrubernetes.sh"

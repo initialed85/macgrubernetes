@@ -69,8 +69,10 @@ if [[ "$command" == join ]] && (has_flag --help "$@" || has_flag -h "$@"); then
     cat <<'EOF'
 Usage: macgrubernetes.sh [maclet join options]
 
-Starts the packaged maclet agent with the bundled macker and darwin-vxlan
-executables. Use `macgrubernetes.sh leave` to unregister the node. Environment
+Starts the packaged maclet agent with the bundled macker, darwin-vxlan, and
+Skopeo executables. Native Darwin image pulls therefore do not require a
+separate Homebrew installation. Use `macgrubernetes.sh leave` to unregister the
+node. Environment
 variables prefixed MACGRUBER_ override defaults; any maclet flags supplied here
 are passed through and take precedence.
 EOF
@@ -150,6 +152,10 @@ fi
 
 maclet_binary=${MACGRUBER_MACLET_BINARY:-$BIN_DIR/maclet}
 macker_binary=${MACGRUBER_MACKER_BINARY:-$BIN_DIR/macker}
+# A release bundles Skopeo next to Macker so image pulls do not depend on a
+# Homebrew installation or the caller's PATH.
+skopeo_binary=${MACGRUBER_SKOPEO_BINARY:-$BIN_DIR/skopeo}
+skopeo_policy=${MACGRUBER_SKOPEO_POLICY:-$BIN_DIR/policy.json}
 vxlan_binary=${MACGRUBER_VXLAN_BINARY:-$BIN_DIR/darwin-vxlan}
 [[ -x "$maclet_binary" ]] || { printf 'macgrubernetes: error: maclet binary not found: %s\n' "$maclet_binary" >&2; exit 1; }
 if [[ "$command" == join && ! -x "$macker_binary" ]] && ! has_flag --macker-binary "$@"; then
@@ -180,6 +186,7 @@ unquarantine_binaries() {
         unquarantine_binary "$maclet_binary" maclet
         if [[ "$command" == join ]]; then
             unquarantine_binary "$macker_binary" macker
+            unquarantine_binary "$skopeo_binary" skopeo
             if [[ "${MACGRUBER_DISABLE_VXLAN:-0}" != 1 && "${MACGRUBER_DISABLE_VXLAN:-0}" != true ]]; then
                 unquarantine_binary "$vxlan_binary" darwin-vxlan
             fi
@@ -215,6 +222,12 @@ if [[ "$command" == join ]]; then
     vxlan_binary=$effective_vxlan_binary
 fi
 unquarantine_binaries
+if [[ "$command" == join && -z "${MACKER_SKOPEO:-}" && -x "$skopeo_binary" ]]; then
+    export MACKER_SKOPEO="$skopeo_binary"
+fi
+if [[ "$command" == join && -z "${CONTAINERS_POLICY_JSON:-}" && -f "$skopeo_policy" ]]; then
+    export CONTAINERS_POLICY_JSON="$skopeo_policy"
+fi
 
 if [[ "$command" == leave ]]; then
     args=(leave --state-dir "$state_dir")
