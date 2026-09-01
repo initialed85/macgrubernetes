@@ -1,4 +1,4 @@
 # name|repository|tag-pattern|tag|commit
-maclet|https://github.com/initialed85/maclet.git|build-*|build-1|35d9d80d17de07bce5be3f92220328994ad852db
+maclet|https://github.com/initialed85/maclet.git|build-*|build-3|f6051cea6b5a98ede76f2e736224c2ae944c8863
 macker|https://github.com/initialed85/macker.git|build-*|build-8|080edb6d5bf5260202043eb684de230811847530
 darwin-vxlan|https://github.com/initialed85/darwin-vxlan.git|vX.Y.Z|v0.1.2|db8c187047d65f7cfc764380086e4a682872dc11

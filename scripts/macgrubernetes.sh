@@ -47,13 +47,32 @@ argument_value() {
     return 1
 }
 
-if has_flag --help "$@" || has_flag -h "$@"; then
+command=join
+if [[ "${1:-}" == leave ]]; then
+    command=leave
+    shift
+elif [[ "${1:-}" == join ]]; then
+    shift
+fi
+
+if [[ "$command" == leave ]] && (has_flag --help "$@" || has_flag -h "$@"); then
+    cat <<'EOF'
+Usage: macgrubernetes.sh leave [maclet leave options]
+
+Unregisters the node, removes cluster-side credentials and networking metadata,
+and deletes the local maclet state. Stop the running macgrubernetes agent first.
+The leave-specific maclet options are passed through unchanged.
+EOF
+    exit 0
+fi
+if [[ "$command" == join ]] && (has_flag --help "$@" || has_flag -h "$@"); then
     cat <<'EOF'
 Usage: macgrubernetes.sh [maclet join options]
 
 Starts the packaged maclet agent with the bundled macker and darwin-vxlan
-executables. Environment variables prefixed MACGRUBER_ override defaults;
-any maclet flags supplied here are passed through and take precedence.
+executables. Use `macgrubernetes.sh leave` to unregister the node. Environment
+variables prefixed MACGRUBER_ override defaults; any maclet flags supplied here
+are passed through and take precedence.
 EOF
     exit 0
 fi
@@ -99,7 +118,7 @@ if [[ -f "$state_dir/state.json" ]]; then
         node_name=$(sed -n 's/.*"nodeName"[[:space:]]*:[[:space:]]*"\([^"\\]*\)".*/\1/p' "$state_dir/state.json" | head -1)
     fi
 fi
-if [[ -z "$server" ]] && ! has_flag --server "$@"; then
+if [[ "$command" == join && -z "$server" ]] && ! has_flag --server "$@"; then
     printf 'macgrubernetes: error: no Kubernetes API server found; set MACGRUBER_SERVER or pass --server\n' >&2
     exit 1
 fi
@@ -133,7 +152,7 @@ maclet_binary=${MACGRUBER_MACLET_BINARY:-$BIN_DIR/maclet}
 macker_binary=${MACGRUBER_MACKER_BINARY:-$BIN_DIR/macker}
 vxlan_binary=${MACGRUBER_VXLAN_BINARY:-$BIN_DIR/darwin-vxlan}
 [[ -x "$maclet_binary" ]] || { printf 'macgrubernetes: error: maclet binary not found: %s\n' "$maclet_binary" >&2; exit 1; }
-if [[ ! -x "$macker_binary" ]] && ! has_flag --macker-binary "$@"; then
+if [[ "$command" == join && ! -x "$macker_binary" ]] && ! has_flag --macker-binary "$@"; then
     printf 'macgrubernetes: error: macker binary not found: %s\n' "$macker_binary" >&2
     exit 1
 fi
@@ -159,9 +178,11 @@ unquarantine_binaries() {
         paths+=("$path")
     done < <(
         unquarantine_binary "$maclet_binary" maclet
-        unquarantine_binary "$macker_binary" macker
-        if [[ "${MACGRUBER_DISABLE_VXLAN:-0}" != 1 && "${MACGRUBER_DISABLE_VXLAN:-0}" != true ]]; then
-            unquarantine_binary "$vxlan_binary" darwin-vxlan
+        if [[ "$command" == join ]]; then
+            unquarantine_binary "$macker_binary" macker
+            if [[ "${MACGRUBER_DISABLE_VXLAN:-0}" != 1 && "${MACGRUBER_DISABLE_VXLAN:-0}" != true ]]; then
+                unquarantine_binary "$vxlan_binary" darwin-vxlan
+            fi
         fi
     )
     ((${#paths[@]} > 0)) || return 0
@@ -181,17 +202,33 @@ unquarantine_binaries() {
     done
 }
 
-# CLI binary overrides are appended below and take precedence over generated
-# defaults, so inspect those effective paths before removing quarantine.
-effective_macker_binary=$macker_binary
-cli_macker_binary=$(argument_value --macker-binary "$@" || true)
-[[ -n "$cli_macker_binary" ]] && effective_macker_binary=$cli_macker_binary
-effective_vxlan_binary=$vxlan_binary
-cli_vxlan_binary=$(argument_value --vxlan-binary "$@" || true)
-[[ -n "$cli_vxlan_binary" ]] && effective_vxlan_binary=$cli_vxlan_binary
-macker_binary=$effective_macker_binary
-vxlan_binary=$effective_vxlan_binary
+if [[ "$command" == join ]]; then
+    # CLI binary overrides are appended below and take precedence over generated
+    # defaults, so inspect those effective paths before removing quarantine.
+    effective_macker_binary=$macker_binary
+    cli_macker_binary=$(argument_value --macker-binary "$@" || true)
+    [[ -n "$cli_macker_binary" ]] && effective_macker_binary=$cli_macker_binary
+    effective_vxlan_binary=$vxlan_binary
+    cli_vxlan_binary=$(argument_value --vxlan-binary "$@" || true)
+    [[ -n "$cli_vxlan_binary" ]] && effective_vxlan_binary=$cli_vxlan_binary
+    macker_binary=$effective_macker_binary
+    vxlan_binary=$effective_vxlan_binary
+fi
 unquarantine_binaries
+
+if [[ "$command" == leave ]]; then
+    args=(leave --state-dir "$state_dir")
+    if [[ -z "$(argument_value --kubeconfig "$@" || true)" ]]; then
+        leave_kubeconfig=${MACGRUBER_KUBECONFIG:-${MACGRUBER_PEER_KUBECONFIG:-}}
+        [[ -n "$leave_kubeconfig" ]] && args+=(--kubeconfig "$leave_kubeconfig")
+    fi
+    if [[ -z "$(argument_value --context "$@" || true)" && -n "${MACGRUBER_PEER_CONTEXT:-}" ]]; then
+        args+=(--context "$MACGRUBER_PEER_CONTEXT")
+    fi
+    [[ -n "$node_name" ]] && args+=(--node-name "$node_name")
+    [[ "${MACGRUBER_INSECURE_SKIP_TLS_VERIFY:-0}" == 1 || "${MACGRUBER_INSECURE_SKIP_TLS_VERIFY:-0}" == true ]] && args+=(--insecure-skip-tls-verify)
+    exec "$maclet_binary" "${args[@]}" "$@"
+fi
 
 args=(join --state-dir "$state_dir" --macker-binary "$macker_binary")
 if [[ "${MACGRUBER_DISABLE_VXLAN:-0}" != 1 && "${MACGRUBER_DISABLE_VXLAN:-0}" != true ]]; then

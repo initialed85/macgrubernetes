@@ -111,6 +111,16 @@ override generated defaults. Common environment overrides include
 `MACGRUBER_VXLAN_LOCAL`, `MACGRUBER_VXLAN_REMOTE`, `MACGRUBER_NODE_NAME`, and
 `MACGRUBER_STATE_DIR`.
 
+To unregister an installed node, stop the running agent first and use the
+launcher’s leave command. It reuses the persisted state and peer kubeconfig:
+
+```sh
+${HOME}/.macgrubernetes/macgrubernetes.sh leave
+```
+
+Pass maclet’s leave options when needed, for example
+`--kubeconfig /path/to/admin-kubeconfig --context home-dev`.
+
 ## Install the latest release
 
 On an Apple Silicon Mac, install the latest non-prerelease release with the
