@@ -96,15 +96,6 @@ value_from_default_kubeconfig() {
     kubectl "${kubectl_args[@]}" config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null || true
 }
 
-current_kube_context() {
-    local kubeconfig=${MACGRUBER_KUBECONFIG:-${KUBECONFIG:-}}
-    local kubectl_args=()
-    if [[ -n "$kubeconfig" ]]; then
-        kubectl_args+=(--kubeconfig "$kubeconfig")
-    fi
-    kubectl "${kubectl_args[@]}" config current-context 2>/dev/null || true
-}
-
 server=${MACGRUBER_SERVER:-}
 cli_server=$(argument_value --server "$@" || true)
 [[ -n "$cli_server" ]] && server=$cli_server
@@ -143,12 +134,11 @@ server_host=${server_host%%/*}
 server_host=${server_host%%:*}
 vxlan_remote=${MACGRUBER_VXLAN_REMOTE:-$server_host}
 
-default_kubeconfig=${home:+$home/.kube/config}
-peer_kubeconfig=${MACGRUBER_PEER_KUBECONFIG:-${KUBECONFIG:-$default_kubeconfig}}
+# K3s agent bootstrap supplies maclet's controller client certificate for
+# peer discovery. An explicit peer kubeconfig is only needed as an override
+# for customized RBAC or privileged cleanup/leave operations.
+peer_kubeconfig=${MACGRUBER_PEER_KUBECONFIG:-}
 peer_context=${MACGRUBER_PEER_CONTEXT:-}
-if [[ -z "$peer_context" ]] && command -v kubectl >/dev/null 2>&1; then
-    peer_context=$(current_kube_context)
-fi
 
 maclet_binary=${MACGRUBER_MACLET_BINARY:-$BIN_DIR/maclet}
 macker_binary=${MACGRUBER_MACKER_BINARY:-$BIN_DIR/macker}

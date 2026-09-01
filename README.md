@@ -65,8 +65,8 @@ Create a release archive under `dist/`:
 make package VERSION=0.1.0
 ```
 
-The package contains the three runtime executables, the bundled Skopeo
-registry client, and a launch wrapper:
+The package contains the four runtime executables, including the bundled
+Skopeo registry client, and a launch wrapper:
 
 ```text
 macgrubernetes-<version>-darwin-arm64/
@@ -94,12 +94,15 @@ checkouts:
 
 - binaries are resolved relative to the extracted archive
 - state defaults to `${HOME}/.maclet`
-- the API server and peer context are read from the current `kubectl` context
-  when available
+- the API server is read from the current `kubectl` context when available;
+  set `MACGRUBER_SERVER` or pass `--server` to avoid that optional lookup
 - the node IP, ExternalIP, and VXLAN local address are read from the default
   route interface using `ipconfig getifaddr`
 - the VXLAN remote defaults to the API server host
-- peer kubeconfig defaults to `$KUBECONFIG` or `${HOME}/.kube/config`
+- maclet obtains its K3s controller client certificate with the join token,
+  so peer discovery does not require a kubeconfig or `kubectl`; set
+  `MACGRUBER_PEER_KUBECONFIG` only for an explicit peer-credential override or
+  privileged cleanup/leave operations
 - if a bundled executable retains macOS quarantine metadata, the wrapper warns
   and uses `sudo` to remove quarantine only from the binaries it will run
 - a token is read from `MACGRUBER_TOKEN_FILE` or
@@ -112,8 +115,8 @@ checkouts:
   policy
 
 The API server is the only operational value the wrapper cannot reliably invent.
-Set `MACGRUBER_SERVER` or pass `--server` when it cannot be obtained from
-`kubectl`. All normal maclet flags can be appended to the wrapper command and
+Set `MACGRUBER_SERVER` or pass `--server` when it cannot be obtained from the
+optional `kubectl` lookup. All normal maclet flags can be appended to the wrapper command and
 override generated defaults. Common environment overrides include
 `MACGRUBER_INTERFACE`, `MACGRUBER_NODE_IP`, `MACGRUBER_EXTERNAL_IP`,
 `MACGRUBER_VXLAN_LOCAL`, `MACGRUBER_VXLAN_REMOTE`, `MACGRUBER_NODE_NAME`, and
