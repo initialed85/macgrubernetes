@@ -9,7 +9,27 @@ permissions:
 
 jobs:
   test-and-build:
-    runs-on: macos-14
+    name: Test and build Darwin/${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+            goarch: arm64
+            rust_target: aarch64-apple-darwin
+            deployment_target: ''
+          - arch: amd64
+            runner: macos-15-intel
+            goarch: amd64
+            rust_target: x86_64-apple-darwin
+            deployment_target: '10.15'
+    runs-on: ${{ matrix.runner }}
+    env:
+      MACGRUBER_GOARCH: ${{ matrix.goarch }}
+      MACGRUBER_RUST_TARGET: ${{ matrix.rust_target }}
+      MACGRUBER_MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
+      MACGRUBER_BUILD_ROOT: .build/${{ matrix.arch }}
     steps:
       - name: Check out Macgrubernetes
         uses: actions/checkout@v4
@@ -21,7 +41,7 @@ jobs:
           cache: false
 
       - name: Set up Rust target
-        run: rustup target add aarch64-apple-darwin
+        run: rustup target add "${MACGRUBER_RUST_TARGET}"
 
       - name: Validate shell scripts
         run: for script in scripts/*.sh; do bash -n "$script"; done
@@ -29,5 +49,8 @@ jobs:
       - name: Test pinned components
         run: make test
 
-      - name: Build Darwin/arm64 bundle
+      - name: Build Darwin/${{ matrix.arch }} bundle
         run: make build
+
+      - name: Inspect binary formats
+        run: file "$MACGRUBER_BUILD_ROOT/bin"/*

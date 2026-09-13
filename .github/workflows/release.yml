@@ -15,8 +15,27 @@ env:
 
 jobs:
   build:
-    name: Build Macgrubernetes bundle
-    runs-on: macos-latest
+    name: Build Darwin/${{ matrix.arch }} bundle
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+            goarch: arm64
+            rust_target: aarch64-apple-darwin
+            deployment_target: ''
+          - arch: amd64
+            runner: macos-15-intel
+            goarch: amd64
+            rust_target: x86_64-apple-darwin
+            deployment_target: '10.15'
+    runs-on: ${{ matrix.runner }}
+    env:
+      MACGRUBER_GOARCH: ${{ matrix.goarch }}
+      MACGRUBER_RUST_TARGET: ${{ matrix.rust_target }}
+      MACGRUBER_MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
+      MACGRUBER_BUILD_ROOT: .build/${{ matrix.arch }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -30,7 +49,7 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin
+          targets: ${{ matrix.rust_target }}
 
       - name: Validate shell scripts
         run: for script in scripts/*.sh; do bash -n "$script"; done
@@ -44,25 +63,40 @@ jobs:
       - name: Test pinned component set
         run: make test
 
-      - name: Build Darwin arm64 binaries
+      - name: Build Darwin/${{ matrix.arch }} binaries
         run: make build
+
+      - name: Inspect binary formats
+        run: file "$MACGRUBER_BUILD_ROOT/bin"/*
 
       - name: Package release
         env:
           VERSION: build-${{ github.run_number }}
-        run: ./scripts/package-release.sh
+        run: MACGRUBER_PACKAGE_ARCH=${{ matrix.arch }} ./scripts/package-release.sh
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macgrubernetes-build-${{ github.run_number }}
+          name: macgrubernetes-build-${{ github.run_number }}-${{ matrix.arch }}
           path: |
             dist/*.tar.gz
             dist/*.sha256
           if-no-files-found: error
 
+  publish:
+    name: Publish multi-architecture release
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: macgrubernetes-build-${{ github.run_number }}-*
+          path: dist
+          merge-multiple: true
+
       - name: Create build-numbered release
-        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}

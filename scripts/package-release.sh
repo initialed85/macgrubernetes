@@ -22,7 +22,7 @@ mkdir -p "$MACGRUBER_ROOT/dist"
 staging=$(mktemp -d "${TMPDIR:-/tmp}/macgrubernetes-package.XXXXXX")
 trap 'rm -rf "$staging"' EXIT
 
-package_name="macgrubernetes-$version-darwin-arm64"
+package_name="macgrubernetes-$version-darwin-$MACGRUBER_PACKAGE_ARCH"
 package_root="$staging/$package_name"
 mkdir -p "$package_root/bin"
 cp "$bin_dir/maclet" "$bin_dir/macker" "$bin_dir/darwin-vxlan" "$bin_dir/skopeo" "$package_root/bin/"

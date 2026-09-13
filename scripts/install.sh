@@ -12,8 +12,9 @@ if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
     cat <<'EOF'
 Usage: install.sh
 
-Downloads the latest Macgrubernetes Darwin/arm64 release into
-${HOME}/.macgrubernetes. Set MACGRUBER_INSTALL_DIR to choose another location.
+Downloads the latest Macgrubernetes Darwin/arm64 or Darwin/amd64 release
+for this Mac into ${HOME}/.macgrubernetes. Set MACGRUBER_INSTALL_DIR to choose
+another location.
 EOF
     exit 0
 fi
@@ -26,9 +27,10 @@ case "$(uname -s)" in
         ;;
 esac
 case "$(uname -m)" in
-    arm64|aarch64) ;;
+    arm64|aarch64) package_arch=arm64 ;;
+    x86_64|amd64) package_arch=amd64 ;;
     *)
-        printf 'macgrubernetes: error: this release is for Apple Silicon (arm64)\n' >&2
+        printf 'macgrubernetes: error: unsupported macOS architecture: %s\n' "$(uname -m)" >&2
         exit 1
         ;;
 esac
@@ -53,7 +55,7 @@ if [[ ! "$tag" =~ ^(build-[0-9]+|v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
     exit 1
 fi
 
-package_name="macgrubernetes-$tag-darwin-arm64"
+package_name="macgrubernetes-$tag-darwin-$package_arch"
 archive_name="$package_name.tar.gz"
 checksum_name="$archive_name.sha256"
 mkdir -p "$download_dir" "$release_dir"

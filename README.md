@@ -5,7 +5,7 @@
 > Native macOS workloads in Kubernetes, somehow.
 
 Macgrubernetes is the integration and packaging project for running trusted
-native Darwin/Apple Silicon workloads as part of a Kubernetes cluster. It does
+native Darwin workloads on Apple Silicon and Intel Macs as part of a Kubernetes cluster. It does
 not try to reproduce Linux container isolation on macOS. Instead, it combines a
 Darwin node agent, a native-process workload runtime, and a Flannel-compatible
 network transport into one reproducible release.
@@ -26,13 +26,22 @@ source trees.
 
 ## Requirements
 
-The current target is Darwin/arm64 on Apple Silicon. Building requires:
+Supported release targets are Darwin/arm64 on Apple Silicon and Darwin/amd64
+(x86_64) on Intel Macs. Catalina/Intel support is experimental: GitHub Actions
+cross-builds and natively tests the amd64 artifact on a newer Intel macOS
+runner, but the actual Catalina/vmnet behavior must be validated on hardware.
+The amd64 bundle deliberately uses a Go 1.22 toolchain, Skopeo 1.18, and a
+10.15 deployment target because newer Go/Skopeo releases emit newer minimum
+macOS versions. The Catalina darwin-vxlan build omits macOS 11-only vmnet
+network-isolation APIs and therefore has weaker concurrent-bridge isolation.
+Building requires:
 
 - macOS with the required `vmnet` entitlement/privilege setup for the network
   transport
 - Bash and Git
 - Go 1.26.5 or newer
-- Rust/Cargo with the `aarch64-apple-darwin` target
+- Rust/Cargo with `aarch64-apple-darwin` or `x86_64-apple-darwin`, depending on
+  the selected target
 
 The resulting binaries are trusted native processes. They share the host
 kernel, filesystem dependencies, and network stack according to the behavior
@@ -59,6 +68,16 @@ registry client):
 make build
 ```
 
+Build the Darwin/amd64 bundle into `.build/amd64`:
+
+```sh
+make build-amd64
+```
+
+The amd64 bundle is intended for Intel Macs, including the experimental Catalina
+path. Its binaries are built with a 10.15 deployment target; it still requires
+runtime validation of Catalina's vmnet privileges and behavior.
+
 Create a release archive under `dist/`:
 
 ```sh
@@ -69,7 +88,7 @@ The package contains the four runtime executables, including the bundled
 Skopeo registry client, and a launch wrapper:
 
 ```text
-macgrubernetes-<version>-darwin-arm64/
+macgrubernetes-<version>-darwin-<arm64|amd64>/
 ├── macgrubernetes.sh
 ├── components.lock
 ├── VERSION
@@ -85,7 +104,7 @@ macgrubernetes-<version>-darwin-arm64/
 After extracting the archive, start the packaged agent with:
 
 ```sh
-cd macgrubernetes-<version>-darwin-arm64
+cd macgrubernetes-<version>-darwin-<arm64|amd64>
 ./macgrubernetes.sh
 ```
 
@@ -134,15 +153,16 @@ Pass maclet’s leave options when needed, for example
 
 ## Install the latest release
 
-On an Apple Silicon Mac, install the latest non-prerelease release with the
-cheeky one-liner:
+On a supported Apple Silicon or Intel Mac, install the matching latest
+non-prerelease release with the cheeky one-liner:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/initialed85/macgrubernetes/master/scripts/install.sh | bash
 ```
 
-The installer verifies the release checksum and stores downloads, versioned
-releases, and stable launch links under `${HOME}/.macgrubernetes`. It prints the
+The installer detects `arm64` or `x86_64`, selects the matching release
+archive, verifies its checksum, and stores downloads, versioned releases, and
+stable launch links under `${HOME}/.macgrubernetes`. It prints the
 exact command to run when installation finishes. Set `MACGRUBER_INSTALL_DIR`
 when a different location is required:
 
@@ -218,15 +238,18 @@ commit.
 
 ## Continuous integration
 
-GitHub Actions runs `make test` and `make build` on macOS for every push and
-pull request. The normal CI workflow validates the commits pinned in
-`components.lock`.
+GitHub Actions runs `make test` and `make build` for both Darwin/arm64 and
+Darwin/amd64 on every push and pull request. The arm64 job uses an Apple Silicon
+runner; the amd64 job uses an Intel macOS runner and exercises the x86_64 build
+path. The pinned component commits in `components.lock` are validated for both
+architectures.
 
 The release workflow first runs `scripts/update.sh`, so each master/manual
 release couples the latest tagged `maclet`, `macker`, and `darwin-vxlan` revisions
-available at that run. It then tests, builds, packages, uploads the archive, and
-publishes a `build-${{ github.run_number }}` GitHub release. Pull requests build
-and upload an artifact but do not publish a release.
+available at that run. It then tests, builds, packages, and uploads both
+architecture archives before publishing a `build-${{ github.run_number }}`
+GitHub release. Pull requests build and upload both artifacts but do not publish
+a release.
 
 ## Repository boundaries
 
