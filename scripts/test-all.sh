@@ -47,9 +47,13 @@ log "testing longhorn-nfs-gateway"
     go vet ./...
     formatted=$(gofmt -l .)
     [[ -z "$formatted" ]] || die "unformatted Go files in longhorn-nfs-gateway:\n$formatted"
-    kubectl kustomize deploy >/dev/null
-    kubectl kustomize config/samples/poc/rwo >/dev/null
-    kubectl kustomize config/samples/poc/rwx >/dev/null
+    if command -v kubectl >/dev/null 2>&1; then
+        kubectl kustomize deploy >/dev/null
+        kubectl kustomize config/samples/poc/rwo >/dev/null
+        kubectl kustomize config/samples/poc/rwx >/dev/null
+    else
+        log "kubectl unavailable; skipping longhorn-nfs-gateway kustomize render checks"
+    fi
 )
 
 log "testing darwin-vxlan with vmnet mock"
