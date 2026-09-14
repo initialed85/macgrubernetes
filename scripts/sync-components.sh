@@ -18,7 +18,7 @@ while IFS='|' read -r component repository pattern tag commit remainder; do
     [[ -n "$repository" && -n "$pattern" && -n "$tag" && -n "$commit" ]] || die "incomplete lockfile entry for $component"
 
     case "$component" in
-        maclet|macker|darwin-vxlan) ;;
+        maclet|macker|darwin-vxlan|longhorn-nfs-gateway) ;;
         *) die "unknown component in lockfile: $component" ;;
     esac
 

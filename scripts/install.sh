@@ -88,7 +88,8 @@ for path in \
     "$package_root/bin/macker" \
     "$package_root/bin/darwin-vxlan" \
     "$package_root/bin/skopeo" \
-    "$package_root/bin/policy.json"; do
+    "$package_root/bin/policy.json" \
+    "$package_root/gateway/deploy/kustomization.yaml"; do
     [[ -e "$path" ]] || {
         printf 'macgrubernetes: error: release archive is missing %s\n' "$path" >&2
         exit 1

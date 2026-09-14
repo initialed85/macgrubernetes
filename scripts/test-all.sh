@@ -14,6 +14,7 @@ ensure_locked_sources
 maclet_source=$(component_source maclet)
 macker_source=$(component_source macker)
 darwin_vxlan_source=$(component_source darwin-vxlan)
+longhorn_nfs_gateway_source=$(component_source longhorn-nfs-gateway)
 
 log "testing maclet"
 (
@@ -37,6 +38,18 @@ log "testing macker"
     if [[ -f test.sh ]]; then
         bash -n test.sh
     fi
+)
+
+log "testing longhorn-nfs-gateway"
+(
+    cd "$longhorn_nfs_gateway_source"
+    go test ./...
+    go vet ./...
+    formatted=$(gofmt -l .)
+    [[ -z "$formatted" ]] || die "unformatted Go files in longhorn-nfs-gateway:\n$formatted"
+    kubectl kustomize deploy >/dev/null
+    kubectl kustomize config/samples/poc/rwo >/dev/null
+    kubectl kustomize config/samples/poc/rwx >/dev/null
 )
 
 log "testing darwin-vxlan with vmnet mock"

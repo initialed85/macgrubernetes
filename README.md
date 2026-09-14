@@ -17,6 +17,7 @@ The source remains split across focused repositories:
 | `maclet` | Kubernetes node agent and native workload reconciler | [initialed85/maclet](https://github.com/initialed85/maclet) |
 | `macker` | Trusted native Darwin workload runtime | [initialed85/macker](https://github.com/initialed85/macker) |
 | `darwin-vxlan` | macOS vmnet-backed Flannel-compatible VXLAN transport | [initialed85/darwin-vxlan](https://github.com/initialed85/darwin-vxlan) |
+| `longhorn-nfs-gateway` | Optional cluster-side Longhorn-to-generic-NFS gateway | [initialed85/longhorn-storage-gateway](https://github.com/initialed85/longhorn-storage-gateway) |
 
 Macgrubernetes pins compatible component release tags and commits in
 [`components.lock`](components.lock), pulls those revisions, builds the binaries
@@ -85,7 +86,8 @@ make package VERSION=0.1.0
 ```
 
 The package contains the four runtime executables, including the bundled
-Skopeo registry client, and a launch wrapper:
+Skopeo registry client, an optional cluster-side Longhorn gateway deployment,
+and a launch wrapper:
 
 ```text
 macgrubernetes-<version>-darwin-<arm64|amd64>/
@@ -99,6 +101,12 @@ macgrubernetes-<version>-darwin-<arm64|amd64>/
     ├── darwin-vxlan
     ├── skopeo
     └── policy.json
+└── gateway/
+    ├── deploy/
+    ├── config/
+    ├── README.md
+    ├── COMPONENT-README.md
+    └── handoff.md
 ```
 
 After extracting the archive, start the packaged agent with:
@@ -150,6 +158,40 @@ ${HOME}/.macgrubernetes/macgrubernetes.sh leave
 
 Pass maclet’s leave options when needed, for example
 `--kubeconfig /path/to/admin-kubeconfig --context home-dev`.
+
+## Optional Longhorn gateway
+
+Build 29 and later include the pinned cluster-side
+`longhorn-nfs-gateway` v0.1.0 deployment artifacts. This is installed once per
+cluster by an operator; the Macgrubernetes node launcher does not apply it
+automatically:
+
+```sh
+kubectl apply -k ${HOME}/.macgrubernetes/gateway/deploy
+```
+
+Create an export after creating a Longhorn PVC by copying and editing the
+bundled sample:
+
+```sh
+cp ${HOME}/.macgrubernetes/gateway/config/samples/longhornnfsexport.yaml /tmp/longhorn-export.yaml
+# edit /tmp/longhorn-export.yaml
+kubectl apply -f /tmp/longhorn-export.yaml
+```
+
+The gateway owns only its CRD, controller, helper workloads, Services,
+ConfigMaps, NetworkPolicies, and RBAC. It never deletes PVCs or PVs. Follow
+`${HOME}/.macgrubernetes/gateway/README.md` for the required deletion order:
+delete gateway exports and wait for finalizers before removing the controller
+and CRD.
+
+```sh
+kubectl delete longhornnfsexports.storage.k8s-darwin.dev --all --all-namespaces
+kubectl delete -k ${HOME}/.macgrubernetes/gateway/deploy
+```
+
+RWO and RWX Longhorn paths have separate acceptance requirements; review the
+gateway documentation before using it with production storage.
 
 ## Install the latest release
 

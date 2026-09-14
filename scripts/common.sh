@@ -70,6 +70,7 @@ component_source_override() {
         maclet) printf '%s\n' "${MACLET_SOURCE:-}" ;;
         macker) printf '%s\n' "${MACKER_SOURCE:-}" ;;
         darwin-vxlan) printf '%s\n' "${DARWIN_VXLAN_SOURCE:-}" ;;
+        longhorn-nfs-gateway) printf '%s\n' "${LONGHORN_NFS_GATEWAY_SOURCE:-}" ;;
         *) die "unknown component: $1" ;;
     esac
 }
@@ -115,7 +116,7 @@ component_url() {
 ensure_locked_sources() {
     [[ "$MACGRUBER_SOURCE_MODE" == local ]] && return
     local component
-    for component in maclet macker darwin-vxlan; do
+    for component in maclet macker darwin-vxlan longhorn-nfs-gateway; do
         if [[ ! -d "$MACGRUBER_BUILD_ROOT/src/$component/.git" ]]; then
             "$MACGRUBER_ROOT/scripts/sync-components.sh"
             return

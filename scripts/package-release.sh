@@ -10,6 +10,7 @@ version=${VERSION:-${MACGRUBER_VERSION:-}}
 [[ -n "$version" ]] || die "VERSION is required (for example: make package VERSION=0.1.0)"
 
 bin_dir="$MACGRUBER_BUILD_ROOT/bin"
+longhorn_nfs_gateway_source=$(component_source longhorn-nfs-gateway)
 for binary in maclet macker darwin-vxlan skopeo; do
     [[ -x "$bin_dir/$binary" ]] || die "missing built binary: $bin_dir/$binary (run make build)"
 done
@@ -24,9 +25,14 @@ trap 'rm -rf "$staging"' EXIT
 
 package_name="macgrubernetes-$version-darwin-$MACGRUBER_PACKAGE_ARCH"
 package_root="$staging/$package_name"
-mkdir -p "$package_root/bin"
+mkdir -p "$package_root/bin" "$package_root/gateway"
 cp "$bin_dir/maclet" "$bin_dir/macker" "$bin_dir/darwin-vxlan" "$bin_dir/skopeo" "$package_root/bin/"
 cp "$MACGRUBER_ROOT/skopeo-policy.json" "$package_root/bin/policy.json"
+cp -R "$longhorn_nfs_gateway_source/deploy" "$package_root/gateway/"
+cp -R "$longhorn_nfs_gateway_source/config" "$package_root/gateway/"
+cp "$longhorn_nfs_gateway_source/README.md" "$package_root/gateway/COMPONENT-README.md"
+cp "$longhorn_nfs_gateway_source/docs/handoff.md" "$package_root/gateway/"
+cp "$longhorn_nfs_gateway_source/deploy/README.md" "$package_root/gateway/README.md"
 cp "$MACGRUBER_ROOT/components.lock" "$package_root/"
 cp "$MACGRUBER_ROOT/scripts/macgrubernetes.sh" "$package_root/macgrubernetes.sh"
 chmod 0755 "$package_root/macgrubernetes.sh"
