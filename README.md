@@ -161,10 +161,16 @@ Pass maclet’s leave options when needed, for example
 
 ## Optional Longhorn gateway
 
-Build 29 and later include the pinned cluster-side
-`longhorn-nfs-gateway` v0.1.0 deployment artifacts. This is installed once per
-cluster by an operator; the Macgrubernetes node launcher does not apply it
-automatically:
+Build 40 and later include the pinned cluster-side
+`longhorn-nfs-gateway` v0.1.2 deployment artifacts. In the default `auto`
+mode, the Macgrubernetes launcher installs or updates the owned gateway once
+per cluster; use `MACGRUBER_GATEWAY_MODE=never` to disable this lifecycle, or
+`required` to fail startup if installation cannot be completed. The launcher
+removes only gateway-owned resources when the last native node leaves and
+never deletes PVCs, PVs, or Longhorn volumes. An existing gateway namespace is
+adopted only when it carries the Macgrubernetes ownership marker.
+
+To install the bundled manifests manually:
 
 ```sh
 kubectl apply -k ${HOME}/.macgrubernetes/gateway/deploy
@@ -191,7 +197,14 @@ kubectl delete -k ${HOME}/.macgrubernetes/gateway/deploy
 ```
 
 RWO and RWX Longhorn paths have separate acceptance requirements; review the
-gateway documentation before using it with production storage.
+gateway documentation before using it with production storage. A ready export
+publishes the generic handoff annotations `nfs-server`, `nfs-export`,
+`nfs-version`, `nfs-mount-port`, `nfs-port`, and `nfs-generation`. Gateway
+mounts use macOS's canonical `mount_nfs -L -P -T -3` flags with the advertised
+NFS and mountd ports; direct `nfs.csi.k8s.io` PV mount options are not changed.
+If a native Pod uses `subPath`, that directory must already exist below the
+export root (for example, `/export/usr/share/nginx/html`); otherwise the Pod
+remains Pending with a missing-subPath diagnostic.
 
 ## Install the latest release
 
