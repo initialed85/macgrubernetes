@@ -116,7 +116,7 @@ replace_link() {
 
 replace_link macgrubernetes.sh "releases/$tag/macgrubernetes.sh"
 replace_link bin "releases/$tag/bin"
-for link in components.lock README.md VERSION macgruber.png; do
+for link in components.lock README.md VERSION macgruber.png gateway; do
     [[ -e "$installed_release/$link" ]] && replace_link "$link" "releases/$tag/$link"
 done
 
