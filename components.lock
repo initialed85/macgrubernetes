@@ -1,5 +1,5 @@
 # name|repository|tag-pattern|tag|commit
-maclet|https://github.com/initialed85/maclet.git|build-*|build-32|050491878626a71309efaaf7bfa5ab1a29132745
+maclet|https://github.com/initialed85/maclet.git|build-*|build-34|953e2fde952a2882713aa8e131081fde1aa2196e
 macker|https://github.com/initialed85/macker.git|build-*|build-13|8f1c296c0c3357a37eaa300d89b32c9b005d35e6
 darwin-vxlan|https://github.com/initialed85/darwin-vxlan.git|vX.Y.Z|v0.1.3|cb294cfcb7c91f8d0cd5674f99ef812fb4a162dd
-longhorn-nfs-gateway|https://github.com/initialed85/longhorn-storage-gateway.git|vX.Y.Z|v0.1.1|be4967d24bd14b95bf59bdac688d33c346ea9a64
+longhorn-nfs-gateway|https://github.com/initialed85/longhorn-storage-gateway.git|vX.Y.Z|v0.1.2|6cf173e62ca0467b9949f73bed13ea7162ab5b0b
