@@ -132,6 +132,16 @@ gateway_apply() {
             [[ "$gateway_mode" == required ]] && return 1 || return 0
         fi
     fi
+    if [[ -z "$existing" ]]; then
+        if ! run_gateway_kubectl apply -f "$SCRIPT_DIR/gateway/config/manager/namespace.yaml" >/dev/null; then
+            gateway_warning "cannot create gateway namespace"
+            [[ "$gateway_mode" == required ]] && return 1 || return 0
+        fi
+        for attempt in $(seq 1 10); do
+            run_gateway_kubectl get namespace "$GATEWAY_NAMESPACE" >/dev/null 2>&1 && break
+            sleep 1
+        done
+    fi
     if ! run_gateway_kubectl apply -k "$gateway_deploy_dir" >/dev/null; then
         gateway_warning "automatic gateway install failed"
         [[ "$gateway_mode" == required ]] && return 1 || return 0
