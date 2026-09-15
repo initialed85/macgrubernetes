@@ -55,13 +55,20 @@ elif [[ "${1:-}" == join ]]; then
     shift
 fi
 
+GATEWAY_NAMESPACE=longhorn-nfs-gateway-system
+GATEWAY_OWNER_CONFIGMAP=macgrubernetes-gateway-owner
+GATEWAY_OWNER_LABEL=macgrubernetes.dev/managed-by
+GATEWAY_OWNER_VALUE=macgrubernetes
+
 if [[ "$command" == leave ]] && (has_flag --help "$@" || has_flag -h "$@"); then
     cat <<'EOF'
 Usage: macgrubernetes.sh leave [maclet leave options]
 
 Unregisters the node, removes cluster-side credentials and networking metadata,
-and deletes the local maclet state. Stop the running macgrubernetes agent first.
-The leave-specific maclet options are passed through unchanged.
+deletes the local maclet state, and removes the Macgrubernetes-owned Longhorn
+gateway only when this is the last native node. Stop the running macgrubernetes
+agent first. Set MACGRUBER_GATEWAY_MODE=never to disable gateway lifecycle
+management. The leave-specific maclet options are passed through unchanged.
 EOF
     exit 0
 fi
@@ -74,7 +81,10 @@ Skopeo executables. Native Darwin image pulls therefore do not require a
 separate Homebrew installation. Use `macgrubernetes.sh leave` to unregister the
 node. Environment
 variables prefixed MACGRUBER_ override defaults; any maclet flags supplied here
-are passed through and take precedence.
+are passed through and take precedence. If kubectl and the bundled gateway
+manifests are available, the Longhorn gateway is installed/updated once per
+cluster by default; set MACGRUBER_GATEWAY_MODE=never to disable this or
+MACGRUBER_GATEWAY_MODE=required to make installation failures fatal.
 EOF
     exit 0
 fi
@@ -86,6 +96,67 @@ state_dir=${state_dir:-.maclet}
 if [[ -n "$home" && "$state_dir" == "~/"* ]]; then
     state_dir="$home/${state_dir#\~/}"
 fi
+
+gateway_mode=${MACGRUBER_GATEWAY_MODE:-auto}
+case "$gateway_mode" in
+    auto|never|required) ;;
+    *) printf 'macgrubernetes: error: MACGRUBER_GATEWAY_MODE must be auto, never, or required\n' >&2; exit 1 ;;
+esac
+gateway_deploy_dir="$SCRIPT_DIR/gateway/deploy"
+gateway_kubectl_args=()
+if [[ -n "${MACGRUBER_KUBECONFIG:-${KUBECONFIG:-}}" ]]; then
+    gateway_kubectl_args+=(--kubeconfig "${MACGRUBER_KUBECONFIG:-${KUBECONFIG:-}}")
+fi
+if [[ -n "${MACGRUBER_GATEWAY_CONTEXT:-${MACGRUBER_PEER_CONTEXT:-}}" ]]; then
+    gateway_kubectl_args+=(--context "${MACGRUBER_GATEWAY_CONTEXT:-${MACGRUBER_PEER_CONTEXT:-}}")
+fi
+run_gateway_kubectl() {
+    kubectl "${gateway_kubectl_args[@]}" "$@"
+}
+gateway_warning() {
+    printf 'macgrubernetes: warning: Longhorn gateway: %s\n' "$*" >&2
+}
+gateway_owner_label() {
+    run_gateway_kubectl get namespace "$GATEWAY_NAMESPACE" -o "jsonpath={.metadata.labels.${GATEWAY_OWNER_LABEL//./\\.}}" 2>/dev/null || true
+}
+gateway_apply() {
+    [[ "$gateway_mode" != never ]] || return 0
+    [[ -d "$gateway_deploy_dir" ]] || { gateway_warning "bundled gateway manifests are unavailable"; [[ "$gateway_mode" == required ]] && return 1 || return 0; }
+    command -v kubectl >/dev/null 2>&1 || { gateway_warning "kubectl is unavailable; skipping automatic gateway install"; [[ "$gateway_mode" == required ]] && return 1 || return 0; }
+    local existing owner
+    existing=$(run_gateway_kubectl get namespace "$GATEWAY_NAMESPACE" -o name 2>/dev/null || true)
+    if [[ -n "$existing" ]]; then
+        owner=$(gateway_owner_label)
+        if [[ "$owner" != "$GATEWAY_OWNER_VALUE" ]]; then
+            gateway_warning "namespace $GATEWAY_NAMESPACE already exists without Macgrubernetes ownership; refusing automatic adoption"
+            [[ "$gateway_mode" == required ]] && return 1 || return 0
+        fi
+    fi
+    if ! run_gateway_kubectl apply -k "$gateway_deploy_dir" >/dev/null; then
+        gateway_warning "automatic gateway install failed"
+        [[ "$gateway_mode" == required ]] && return 1 || return 0
+    fi
+    run_gateway_kubectl label namespace "$GATEWAY_NAMESPACE" "$GATEWAY_OWNER_LABEL=$GATEWAY_OWNER_VALUE" --overwrite >/dev/null
+    run_gateway_kubectl create configmap "$GATEWAY_OWNER_CONFIGMAP" -n "$GATEWAY_NAMESPACE" \
+        --from-literal=owner=macgrubernetes --from-literal=version="$(cat "$SCRIPT_DIR/../VERSION" 2>/dev/null || printf unknown)" \
+        --dry-run=client -o yaml | run_gateway_kubectl apply -f - >/dev/null
+    printf 'macgrubernetes: Longhorn gateway installed/updated\n'
+}
+gateway_uninstall_if_last() {
+    [[ "$gateway_mode" != never ]] || return 0
+    command -v kubectl >/dev/null 2>&1 || return 0
+    [[ "$(gateway_owner_label)" == "$GATEWAY_OWNER_VALUE" ]] || return 0
+    local nodes
+    nodes=$(run_gateway_kubectl get nodes -l k8s-darwin.dev/native=true -o name 2>/dev/null || true)
+    [[ -z "$nodes" ]] || { printf 'macgrubernetes: retaining Longhorn gateway; other native nodes remain\n'; return 0; }
+    printf 'macgrubernetes: last native node leaving; removing owned Longhorn gateway\n'
+    run_gateway_kubectl delete longhornnfsexports.storage.k8s-darwin.dev --all --all-namespaces --ignore-not-found >/dev/null 2>&1 || true
+    for attempt in $(seq 1 36); do
+        [[ -z "$(run_gateway_kubectl get longhornnfsexports.storage.k8s-darwin.dev --all-namespaces -o name 2>/dev/null || true)" ]] && break
+        sleep 5
+    done
+    run_gateway_kubectl delete -k "$gateway_deploy_dir" --ignore-not-found >/dev/null 2>&1 || gateway_warning "gateway uninstall encountered an error"
+}
 
 value_from_default_kubeconfig() {
     local kubeconfig=${MACGRUBER_KUBECONFIG:-${KUBECONFIG:-}}
@@ -230,7 +301,14 @@ if [[ "$command" == leave ]]; then
     fi
     [[ -n "$node_name" ]] && args+=(--node-name "$node_name")
     [[ "${MACGRUBER_INSECURE_SKIP_TLS_VERIFY:-0}" == 1 || "${MACGRUBER_INSECURE_SKIP_TLS_VERIFY:-0}" == true ]] && args+=(--insecure-skip-tls-verify)
-    exec "$maclet_binary" "${args[@]}" "$@"
+    set +e
+    "$maclet_binary" "${args[@]}" "$@"
+    leave_status=$?
+    set -e
+    if [[ "$leave_status" -eq 0 ]]; then
+        gateway_uninstall_if_last
+    fi
+    exit "$leave_status"
 fi
 
 args=(join --state-dir "$state_dir" --macker-binary "$macker_binary")
@@ -264,4 +342,7 @@ fi
 [[ -n "${MACGRUBER_SERVICE_CIDR:-}" ]] && args+=(--service-cidr "$MACGRUBER_SERVICE_CIDR")
 [[ -n "${MACGRUBER_DRAIN_TIMEOUT:-}" ]] && args+=(--drain-timeout "$MACGRUBER_DRAIN_TIMEOUT")
 
+if ! gateway_apply; then
+    exit 1
+fi
 exec "$maclet_binary" "${args[@]}" "$@"
