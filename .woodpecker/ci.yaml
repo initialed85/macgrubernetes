@@ -1,0 +1,96 @@
+# Macgrubernetes CI on Woodpecker (woodpecker.dev.initialed85.cc).
+#
+# This is the integration/packaging repo of the Darwin stack: components.lock pins maclet, macker,
+# darwin-vxlan and longhorn-storage-gateway, `make test`/`make build` clone those pins into
+# $MACGRUBER_BUILD_ROOT/src and run the real test suites, and the bundle is the artifact. Everything
+# here has to happen on a real macOS host, so every step is routed to the cluster's only Darwin agent
+# (icarus-2.local, darwin/arm64) and runs there directly rather than in a container.
+#
+# Two things that deliberately differ from the linux recipes in the other repos, because v3 does not
+# work the way the docs say:
+#
+# 1. Routing is `labels: {platform: darwin/arm64}`, NOT `when: platform:`. The server compiles a
+#    `when: platform` constraint against metadata.Sys.Platform, which the server hardcodes to the empty
+#    string (server/pipeline/metadata/metadata.go:112), so the step is dropped from the compiled config
+#    before any agent sees it and the pipeline goes green having run nothing. A workflow label is
+#    registered as a label on the agent that reports that platform (cmd/agent/core/agent.go:233) and the
+#    scheduler requires every task label to be present on the agent (server/scheduler/filter.go).
+#    hack/check-woodpecker-config.py now rejects `when: platform` outright.
+#
+# 2. `image: bash` is not a container reference. This agent runs the `local` backend, and
+#    pipeline/backend/local/command.go opens with "execCommands use step.Image as shell and run the
+#    commands in it" - the image field selects the shell (sh/bash/zsh). The toolchain is whatever the
+#    Mac has: go 1.24 (homebrew go@1.24) and rustup/cargo in ~/.cargo, both already proven by
+#    darwin-vxlan's own pipeline building aarch64 and x86_64 apple-darwin on this host.
+#
+# Component clones (components.lock points at private initialed85 repos) work because the local backend
+# gives each workflow an isolated HOME with the netrc the compiler injects for a trusted.security repo
+# (pipeline/backend/local/clone.go:120, backend-local-isolated-home defaults true), and HOME is exported
+# to every step of that workflow (local.go:159), not just the clone.
+#
+# What this does NOT reproduce from .github/workflows/ci.yml: the amd64 leg ran on macos-15-intel.
+# There is no Intel Mac in the cluster. The amd64 bundle is therefore cross-compiled on the arm64 host
+# (build-all.sh honours MACGRUBER_GOARCH and MACGRUBER_RUST_TARGET, and darwin-vxlan already proves
+# x86_64-apple-darwin links here), and the amd64 *tests* are not run - test-all.sh calls `go test`
+# without GOARCH, so an amd64 test run needs an Intel host. The arm64 `make test` is the gate; a real
+# Intel agent would add its own leg rather than pretending this one covers it.
+
+labels:
+  platform: darwin/arm64
+
+steps:
+  - name: toolchain-and-shell
+    image: bash
+    commands:
+      - uname -s -m
+      - go version
+      - rustc --version
+      - cargo --version
+      - make --version | head -1
+      # the GHA's own first step: every script in the repo must parse before anything runs
+      - for script in scripts/*.sh; do bash -n "$script"; done
+
+  - name: test
+    image: bash
+    depends_on: [toolchain-and-shell]
+    environment:
+      MACGRUBER_GOARCH: arm64
+      MACGRUBER_RUST_TARGET: aarch64-apple-darwin
+      MACGRUBER_MACOSX_DEPLOYMENT_TARGET: ''
+      MACGRUBER_BUILD_ROOT: .build/arm64
+    commands:
+      # make test -> sync (clone the four pinned components at their lockfile commits) -> test-all.sh:
+      # go test + go vet + gofmt gate over maclet, macker and longhorn-storage-gateway, cargo fmt +
+      # cargo test --features vmnet-mock over darwin-vxlan.
+      - make test
+
+  - name: build-darwin-arm64
+    image: bash
+    depends_on: [test]
+    environment:
+      MACGRUBER_GOARCH: arm64
+      MACGRUBER_RUST_TARGET: aarch64-apple-darwin
+      MACGRUBER_MACOSX_DEPLOYMENT_TARGET: ''
+      MACGRUBER_BUILD_ROOT: .build/arm64
+    commands:
+      - make build
+      # the GHA's last step: a bundle whose binaries are the wrong architecture is how a packaging
+      # mistake would actually reach a user, so look at the mach-o headers
+      - file .build/arm64/bin/*
+
+  - name: build-darwin-amd64
+    image: bash
+    depends_on: [build-darwin-arm64]
+    environment:
+      MACGRUBER_GOARCH: amd64
+      MACGRUBER_RUST_TARGET: x86_64-apple-darwin
+      MACGRUBER_MACOSX_DEPLOYMENT_TARGET: '10.15'
+      MACGRUBER_BUILD_ROOT: .build/amd64
+    commands:
+      - make build
+      - file .build/amd64/bin/*
+
+when:
+  - event:
+      - push
+      - pull_request
