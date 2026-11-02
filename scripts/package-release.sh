@@ -27,6 +27,25 @@ package_name="macgrubernetes-$version-darwin-$MACGRUBER_PACKAGE_ARCH"
 package_root="$staging/$package_name"
 mkdir -p "$package_root/bin" "$package_root/gateway"
 cp "$bin_dir/maclet" "$bin_dir/macker" "$bin_dir/darwin-vxlan" "$bin_dir/skopeo" "$package_root/bin/"
+
+# Ad-hoc sign the bundled binaries. They arrive from `make build` already
+# carrying the Go/Rust linker's ad-hoc signature, which is a CSSLOT blob
+# appended to the end of the file with no LC_CODE_SIGNATURE load command
+# pointing at it, so a load-command scan finds nothing and the signature is
+# still real. That signature is destroyed by any post-link rewrite -- strip,
+# lipo, install_name_tool -- and if a leg ever changes linker, buildmode or
+# SDK the guarantee disappears, at which point Apple Silicon answers
+# `Killed: 9` at exec instead of a clean error. Signing here makes it a
+# property of the release rather than of the current toolchain, and it runs
+# before the checksums below so the published .sha256 covers signed bytes.
+if command -v codesign >/dev/null 2>&1; then
+    for binary in maclet macker darwin-vxlan skopeo; do
+        codesign --force --sign - "$package_root/bin/$binary"
+    done
+else
+    echo "warning: no codesign on this host; bundling only the linker's own signature" >&2
+fi
+
 cp "$MACGRUBER_ROOT/skopeo-policy.json" "$package_root/bin/policy.json"
 cp -R "$longhorn_nfs_gateway_source/deploy" "$package_root/gateway/"
 cp -R "$longhorn_nfs_gateway_source/config" "$package_root/gateway/"
