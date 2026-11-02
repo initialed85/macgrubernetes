@@ -100,6 +100,27 @@ steps:
       - make build arch=arm64
       - file .build/arm64/bin/*
       - env MACGRUBER_PACKAGE_ARCH=arm64 VERSION=$(cat .release/TAG) ./scripts/package-release.sh
+      # Record the toolchain that produced the bundle, as a release asset rather than bundle content, so it
+      # cannot change a byte of what a node installs. The lane pins no Go, Rust or clang and the darwin agent
+      # resolves image to a host binary, so this build uses whatever the Mac happens to have: a Homebrew go
+      # upgrade or an Xcode point release moves every binary in the bundle while not one file in the repo
+      # differs. That is the difference between "the host has been static" and "the lane is
+      # toolchain-independent", and six identical releases only prove the first. Taken here, in the step that
+      # ran the compiler, because a later container would measure a different environment. Each probe is
+      # guarded: a missing tool is recorded as none, which is itself a fact about the host.
+      - |
+        TAG=$(cat .release/TAG)
+        {
+          echo "tag: $TAG"
+          echo "commit: $CI_COMMIT_SHA"
+          echo "host: $(uname -sr)"
+          printf 'go: '; go version 2>/dev/null || echo none
+          printf 'rustc: '; rustc -V 2>/dev/null || echo none
+          printf 'cargo: '; cargo -V 2>/dev/null || echo none
+          printf 'cc: '; cc --version 2>/dev/null | head -1 || echo none
+          printf 'sdk: '; xcrun --show-sdk-version 2>/dev/null || echo none
+        } > dist/toolchain-$TAG.txt
+        cat dist/toolchain-$TAG.txt
 
   # Advisory, and it exits 0 whatever it finds. Why it exists: build-52 through build-55 have byte-identical
   # bundles because the commits between them touched the installer and comments, and that is only visible
@@ -108,12 +129,12 @@ steps:
   # up a floating dependency would look like, and it would currently surface as a node that will not reproduce
   # a release, discovered later, on a Mac.
   #
-  # Why advisory rather than a gate: it cannot see the runner's Go and Rust versions, so a toolchain upgrade
-  # reads as "binaries changed with no source change" and would block a release the repo did nothing to
-  # deserve. A gate with a known false-positive rate gets disabled the first time it fires on someone mid
-  # deploy, which is worse than no gate. It reports on every run, so it is never a safeguard that has only
-  # been seen declining to act, and it prints INCONCLUSIVE rather than a bare "skipping" when it cannot
-  # compare, because a verdict indistinguishable from silence is not a check.
+  # Why advisory rather than a gate: a gate with a known false-positive rate gets disabled the first time it
+  # fires on someone mid deploy, which is worse than no gate, and the two things that legitimately move a
+  # bundle are a source change and a runner toolchain change, so the report carries both (see the toolchain
+  # asset above) rather than assuming the second is impossible. It reports on every run, so it is never a
+  # safeguard that has only been seen declining to act, and it prints INCONCLUSIVE rather than a bare
+  # "skipping" when it cannot compare, because a verdict indistinguishable from silence is not a check.
   - name: determinism-report
     image: bash
     depends_on: [build-arm64]
@@ -136,7 +157,7 @@ steps:
       # comparing nothing looked like a run that had simply found nothing to compare against. That is why
       # the skip paths say INCONCLUSIVE rather than skipping. Keep the strip unbraced, and note that a
       # braced form in a comment is substituted too, which is how macker #3 died.
-      - TAG=$(cat .release/TAG); pkg=macgrubernetes-$TAG-darwin-arm64; rm -rf .det; mkdir -p .det/current; tar -xzf "dist/$pkg.tar.gz" -C .det/current; case "$TAG" in build-*) PREV=build-$(( $(printf '%s' "$TAG" | sed 's/^build-//') - 1 ));; *) PREV="";; esac; TAG=$TAG PREV_TAG=$PREV MACGRUBER_BUILD_ROOT=.det/current/$pkg MACGRUBER_REPO_DIR=$CI_WORKSPACE bash scripts/determinism-report.sh
+      - TAG=$(cat .release/TAG); pkg=macgrubernetes-$TAG-darwin-arm64; rm -rf .det; mkdir -p .det/current; tar -xzf "dist/$pkg.tar.gz" -C .det/current; case "$TAG" in build-*) PREV=build-$(( $(printf '%s' "$TAG" | sed 's/^build-//') - 1 ));; *) PREV="";; esac; TAG=$TAG PREV_TAG=$PREV MACGRUBER_BUILD_ROOT=.det/current/$pkg MACGRUBER_REPO_DIR=$CI_WORKSPACE bash scripts/determinism-report.sh || echo "determinism CRASHED with a nonzero status and reported nothing. This step is advisory, so it does not block the release, but a crash is not a pass, and a report that always exits 0 by construction is a safeguard that has never been seen to do anything."
 
   - name: publish
     image: bash
@@ -151,7 +172,7 @@ steps:
       - test -n "$GH_TOKEN" || export GH_TOKEN=$(cat /Users/edwardbeech/.config/woodpecker-agent/github-token)
       # the tag points at the commit this pipeline built; gh is the only thing here with a credential
       - gh api repos/$CI_REPO/git/refs -f ref="refs/tags/$(cat .release/TAG)" -f sha="$CI_COMMIT_SHA"
-      - gh release create "$(cat .release/TAG)" dist/*.tar.gz dist/*.sha256 --generate-notes --title "Macgrubernetes $(cat .release/TAG)"
+      - gh release create "$(cat .release/TAG)" dist/*.tar.gz dist/*.sha256 dist/toolchain-*.txt --generate-notes --title "Macgrubernetes $(cat .release/TAG)"
       - gh release view "$(cat .release/TAG)" --json tagName,assets --jq '"tag " + .tagName + " assets " + (.assets | length | tostring)'
 
   # A failed publish must not leave a tag that has no release behind it. The ref above is created before

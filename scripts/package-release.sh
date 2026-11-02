@@ -70,7 +70,17 @@ if [[ -f "$MACGRUBER_ROOT/macgruber.png" ]]; then
 fi
 
 archive="$MACGRUBER_ROOT/dist/$package_name.tar.gz"
-tar -czf "$archive" -C "$staging" "$package_name"
+# macOS tar is bsdtar, and it writes extended attributes two ways: AppleDouble ._ sidecar entries (build-57
+# carries 51 of them, including bin/._maclet) and LIBARCHIVE.xattr pax headers on the real files. Those
+# attributes include com.apple.provenance and com.apple.lastuseddate, whose values change when a file is
+# run, so a bundle built from an identical tree can still differ in bytes nothing in the repo controls. Six
+# identical releases only proved the host had been quiet, not that the packaging was clean.
+# COPYFILE_DISABLE is honoured by macOS tar and simply ignored by GNU and busybox, so it is safe everywhere.
+# --no-xattrs is added only where the local tar understands it: the alpine packaging path runs busybox tar,
+# which does not, and an unknown option there would fail the build rather than be skipped.
+tar_extra=""
+if tar --help 2>&1 | grep -q -- '--no-xattrs'; then tar_extra="--no-xattrs"; fi
+COPYFILE_DISABLE=1 tar $tar_extra -czf "$archive" -C "$staging" "$package_name"
 (
     cd "$MACGRUBER_ROOT/dist"
     shasum -a 256 "$(basename "$archive")" > "$(basename "$archive").sha256"
