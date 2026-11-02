@@ -97,6 +97,15 @@ for opt in --no-mac-metadata --no-xattrs; do
 done
 rm -f "$probe"
 COPYFILE_DISABLE=1 tar $tar_extra -czf "$archive" -C "$staging" "$package_name"
+# What is now reproducible, and what is not, measured on the published artifacts with python tarfile
+# rather than reasoned about: build-57 carried 50 AppleDouble entries, 100 xattr headers and 38 distinct
+# file mtimes; build-59 carries none of them. The bundle CONTENTS are reproducible, 36 files byte-identical
+# from 57 through 59 across two packaging changes. The ARCHIVE is not, and this does not try to make it so:
+# it still embeds uid 501, gid 0, uname edwardbeech, gname wheel, and per-file mtimes that come from the
+# clock when the staging tree was assembled, so a second machine building the same commit produces a
+# different tarball and a different .sha256. That is why the report compares file hashes and not the
+# archive checksum, and anyone tempted to treat the published .sha256 as a cross-machine reproducibility
+# proof should read this line first.
 (
     cd "$MACGRUBER_ROOT/dist"
     shasum -a 256 "$(basename "$archive")" > "$(basename "$archive").sha256"
