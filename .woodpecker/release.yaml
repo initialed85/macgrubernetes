@@ -60,7 +60,11 @@ steps:
       # from jq, and the step "succeeded" by deriving build-1 on a repo that already has build-N tags. That
       # is the failure mode to avoid: a masked gh error publishes a colliding tag, it does not stop the run.
       - gh api "repos/$CI_REPO/tags?per_page=100" --paginate > tags.json
-      - jq -r '.[].name' tags.json | grep -E '^build-[0-9]+$' | sort -V | tail -n 1 > build-number.txt
+      # The leading build- has to come off before the arithmetic. $(( build-43 + 1 )) does not fail: bash
+      # evaluates the word "build" as an unset variable, so it is 0 - 43 + 1 = -42, and macgrubernetes #4
+      # derived the tag build--42, named its artifact macgrubernetes-build--42-darwin-arm64.tar.gz, and left
+      # the resolve step green. macker's derivation already stripped the prefix; this port had dropped it.
+      - jq -r '.[].name' tags.json | grep -E '^build-[0-9]+$' | sort -V | tail -n 1 | sed 's#^build-##' > build-number.txt
       - test -s build-number.txt || echo 0 > build-number.txt
       - mkdir -p .release && echo "build-$(( $(cat build-number.txt) + 1 ))" > .release/TAG
       - echo "publishing $(cat .release/TAG), derived from the tags that already exist"
@@ -92,7 +96,11 @@ steps:
     image: bash
     depends_on: [build-arm64]
     commands:
-      - test "$(ls dist/*.tar.gz | wc -l)" = 1
+      # BSD wc pads its count with spaces - measured on icarus: ls /etc/protocols | wc -l writes seven spaces
+      # then 1 - so the count must be squeezed before comparing, and this is another place where the Actions
+      # version was fine because its runner ran GNU coreutils. Without tr, the publish step fails on a
+      # perfectly good release with one artifact.
+      - test "$(ls dist/*.tar.gz | wc -l | tr -d ' ')" = 1
       # GH_TOKEN from the agent pod if maclet resolved it, otherwise the host file the agent's own user owns
       - test -n "$GH_TOKEN" || export GH_TOKEN=$(cat /Users/edwardbeech/.config/woodpecker-agent/github-token)
       # the tag points at the commit this pipeline built; gh is the only thing here with a credential
