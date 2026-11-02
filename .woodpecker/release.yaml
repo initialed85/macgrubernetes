@@ -128,7 +128,15 @@ steps:
       #
       # The prefix strip is guarded for the same reason the build-number step documents it: $(( v0.1.3 - 1 ))
       # does not fail loudly, it evaluates to a number, and an unanchored build- prefix once produced build--42.
-      - TAG=$(cat .release/TAG); pkg=macgrubernetes-$TAG-darwin-arm64; rm -rf .det; mkdir -p .det/current; tar -xzf "dist/$pkg.tar.gz" -C .det/current; case "$TAG" in build-*) PREV=build-$(( ${TAG#build-} - 1 ));; *) PREV="";; esac; TAG=$TAG PREV_TAG=$PREV MACGRUBER_BUILD_ROOT=.det/current/$pkg MACGRUBER_REPO_DIR=$CI_WORKSPACE bash scripts/determinism-report.sh
+      # Braced expansion of a shell-local variable is the trap. The config-time substitution runs over the
+      # raw workflow text, comments included, and only the BRACED form is evaluated, so the braced prefix
+      # strip of TAG used here before became an empty string and the line turned into
+      # `PREV=build-$(( - 1 ))`, which is valid bash and produced build--1. Measured on this lane's first
+      # run, build-56: the report printed INCONCLUSIVE - could not fetch build--1 and exited 0, so a check
+      # comparing nothing looked like a run that had simply found nothing to compare against. That is why
+      # the skip paths say INCONCLUSIVE rather than skipping. Keep the strip unbraced, and note that a
+      # braced form in a comment is substituted too, which is how macker #3 died.
+      - TAG=$(cat .release/TAG); pkg=macgrubernetes-$TAG-darwin-arm64; rm -rf .det; mkdir -p .det/current; tar -xzf "dist/$pkg.tar.gz" -C .det/current; case "$TAG" in build-*) PREV=build-$(( $(printf '%s' "$TAG" | sed 's/^build-//') - 1 ));; *) PREV="";; esac; TAG=$TAG PREV_TAG=$PREV MACGRUBER_BUILD_ROOT=.det/current/$pkg MACGRUBER_REPO_DIR=$CI_WORKSPACE bash scripts/determinism-report.sh
 
   - name: publish
     image: bash
