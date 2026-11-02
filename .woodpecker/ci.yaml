@@ -61,8 +61,9 @@ steps:
     commands:
       # make test -> sync (clone the four pinned components at their lockfile commits) -> test-all.sh:
       # go test + go vet + gofmt gate over maclet, macker and longhorn-storage-gateway, cargo fmt +
-      # cargo test --features vmnet-mock over darwin-vxlan.
-      - make test
+      # cargo test --features vmnet-mock over darwin-vxlan. Same sync retry as the build steps below:
+      # sync re-fetches every pinned tag on each run and that fetch is the flake here, not the code.
+      - make test || { echo "retrying once - component fetch flake"; sleep 5; make test; }
 
   - name: build-darwin-arm64
     image: bash
@@ -73,7 +74,16 @@ steps:
       MACGRUBER_MACOSX_DEPLOYMENT_TARGET: ''
       MACGRUBER_BUILD_ROOT: .build/arm64
     commands:
-      - make build
+      # make build -> sync -> build-all.sh. `make` is retried once because `make build` depends on sync,
+      # and sync re-fetches all four pinned tags even when the checkout already exists
+      # (scripts/sync-components.sh:40) so it can assert each tag still resolves to the lockfile commit.
+      # That fetch is the only network-dependent part of this step: pipeline 1 got through clone, the
+      # toolchain check and the whole `make test` gate, then died on
+      #   fatal: unable to access 'https://github.com/initialed85/longhorn-storage-gateway.git/':
+      #   Recv failure: Connection reset by peer
+      # - a GitHub reset on a Mac that had just rebooted, not a build error. A real compile failure fails
+      # twice, so the retry costs time on genuine breakage and removes the flake on everything else.
+      - make build || { echo "retrying once - component fetch flake"; sleep 5; make build; }
       # the GHA's last step: a bundle whose binaries are the wrong architecture is how a packaging
       # mistake would actually reach a user, so look at the mach-o headers
       - file .build/arm64/bin/*
@@ -87,7 +97,7 @@ steps:
       MACGRUBER_MACOSX_DEPLOYMENT_TARGET: '10.15'
       MACGRUBER_BUILD_ROOT: .build/amd64
     commands:
-      - make build
+      - make build || { echo "retrying once - component fetch flake"; sleep 5; make build; }
       - file .build/amd64/bin/*
 
 when:
