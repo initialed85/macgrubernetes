@@ -127,6 +127,18 @@ steps:
   # created: a draft release for our tag, or a ref for our tag with no release at all. A published release
   # is left alone even if the pipeline failed afterwards, and a tag whose sha is not this commit's is not
   # ours to delete.
+  #
+  # Tested rather than assumed. Until now this step had only ever been observed declining to act, which does
+  # not distinguish a working safeguard from one that cannot fire -- the same shape as the bug it was
+  # written after, where the first version was guarded by `status: [failure, error]`, an illegal value the
+  # Go linter compiles away, so the cleanup would have silently never run. Branch ci/orphan-tag-test ran
+  # all three states against the real API (pipeline #12, lane preserved in commit 329034f48de32dc00d27bab1214cf24444c12416,
+  # resurrect with `git checkout 329034f -- '.woodpecker/orphan-*'` and push a branch of that name), and the
+  # outcome was checked against GitHub rather than trusting the step's own log: a ref with no release was
+  # deleted; a draft with a ref had both removed by --cleanup-tag, which is the state a real upload failure
+  # actually leaves since gh creates the release object before it uploads; and a published release followed
+  # by a failure kept both its tag and its assets. Tags were test-<case>-build-<run> so they could not
+  # match the build-* pattern any resolver reads.
   - name: clean-up-orphan-tag
     image: bash
     depends_on: [publish]
