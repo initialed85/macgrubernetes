@@ -138,7 +138,11 @@ steps:
   # deleted; a draft with a ref had both removed by --cleanup-tag, which is the state a real upload failure
   # actually leaves since gh creates the release object before it uploads; and a published release followed
   # by a failure kept both its tag and its assets. Tags were test-<case>-build-<run> so they could not
-  # match the build-* pattern any resolver reads.
+  # match the build-* pattern any resolver reads. Coverage is complete by construction, as the peer pointed
+  # out: the ref is created inside the publish step, so ref-exists implies publish-ran, and a failure in
+  # build-arm64 leaves no ref for this step to find. The messages name the branch taken and the action,
+  # because a log that says "not touching the ref" immediately before a command that deletes it is read
+  # as a contradiction by whoever is debugging a real failure at 2am.
   - name: clean-up-orphan-tag
     image: bash
     depends_on: [publish]
@@ -148,8 +152,8 @@ steps:
       # Nothing to clean if the run died before the build number was resolved.
       - test -f .release/TAG || exit 0
       - test -n "$GH_TOKEN" || export GH_TOKEN=$(cat /Users/edwardbeech/.config/woodpecker-agent/github-token)
-      - TAG=$(cat .release/TAG); if gh release view "$TAG" --json isDraft >/dev/null 2>&1; then echo "$TAG has a release object; not touching the ref"; else echo "$TAG has no release; deleting the ref this pipeline created"; gh api -X DELETE "repos/$CI_REPO/git/refs/tags/$TAG" || echo "no ref to delete"; fi
-      - TAG=$(cat .release/TAG); if test "$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)" = true; then echo "$TAG is an orphan draft; deleting it and its tag"; gh release delete "$TAG" --yes --cleanup-tag; else echo "$TAG is not a draft; leaving it"; fi
+      - TAG=$(cat .release/TAG); if gh release view "$TAG" --json isDraft >/dev/null 2>&1; then echo "$TAG has a release object; leaving the ref alone, the next line decides whether that release is an orphan draft"; else echo "$TAG has no release; deleting the ref this pipeline created"; gh api -X DELETE "repos/$CI_REPO/git/refs/tags/$TAG" || echo "no ref to delete"; fi
+      - TAG=$(cat .release/TAG); if test "$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)" = true; then echo "draft release for $TAG exists, removing it and refs/tags/$TAG together"; gh release delete "$TAG" --yes --cleanup-tag; else echo "$TAG is not a draft, so it is a real release; leaving it"; fi
 
 when:
   - event: push
