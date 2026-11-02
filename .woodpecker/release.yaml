@@ -101,9 +101,38 @@ steps:
       - file .build/arm64/bin/*
       - env MACGRUBER_PACKAGE_ARCH=arm64 VERSION=$(cat .release/TAG) ./scripts/package-release.sh
 
-  - name: publish
+  # Advisory, and it exits 0 whatever it finds. Why it exists: build-52 through build-55 have byte-identical
+  # bundles because the commits between them touched the installer and comments, and that is only visible
+  # because I compared the releases by hand. The failure mode worth catching is the opposite - a bundle that
+  # moves with no commit that explains it - which is what a runner toolchain upgrade or a build script picking
+  # up a floating dependency would look like, and it would currently surface as a node that will not reproduce
+  # a release, discovered later, on a Mac.
+  #
+  # Why advisory rather than a gate: it cannot see the runner's Go and Rust versions, so a toolchain upgrade
+  # reads as "binaries changed with no source change" and would block a release the repo did nothing to
+  # deserve. A gate with a known false-positive rate gets disabled the first time it fires on someone mid
+  # deploy, which is worse than no gate. It reports on every run, so it is never a safeguard that has only
+  # been seen declining to act, and it prints INCONCLUSIVE rather than a bare "skipping" when it cannot
+  # compare, because a verdict indistinguishable from silence is not a check.
+  - name: determinism-report
     image: bash
     depends_on: [build-arm64]
+    commands:
+      - test -n "$GH_TOKEN" || export GH_TOKEN=$(cat /Users/edwardbeech/.config/woodpecker-agent/github-token)
+      # One line, not several: the steps above already re-read .release/TAG per command rather than trusting
+      # a variable across commands, and $package_name is a variable from the packaging script, not this one.
+      # Everything the report needs is resolved here, against the packaged tarball rather than .build/arm64,
+      # because that is the thing a node actually receives - the build root holds bin/ but not the launcher,
+      # README, components.lock copy or gateway files the packaging step assembles, and hashing it would
+      # report five missing files on both sides and look like a verdict.
+      #
+      # The prefix strip is guarded for the same reason the build-number step documents it: $(( v0.1.3 - 1 ))
+      # does not fail loudly, it evaluates to a number, and an unanchored build- prefix once produced build--42.
+      - TAG=$(cat .release/TAG); pkg=macgrubernetes-$TAG-darwin-arm64; rm -rf .det; mkdir -p .det/current; tar -xzf "dist/$pkg.tar.gz" -C .det/current; case "$TAG" in build-*) PREV=build-$(( ${TAG#build-} - 1 ));; *) PREV="";; esac; TAG=$TAG PREV_TAG=$PREV MACGRUBER_BUILD_ROOT=.det/current/$pkg MACGRUBER_REPO_DIR=$CI_WORKSPACE bash scripts/determinism-report.sh
+
+  - name: publish
+    image: bash
+    depends_on: [determinism-report]
     commands:
       # BSD wc pads its count with spaces - measured on icarus: ls /etc/protocols | wc -l writes seven spaces
       # then 1 - so the count must be squeezed before comparing, and this is another place where the Actions
