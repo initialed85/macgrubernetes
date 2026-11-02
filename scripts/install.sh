@@ -88,9 +88,21 @@ if [[ -n "$want_tag" ]]; then
     # deliberate `--release build-50` makes the node stay on build-50.
     tag=$want_tag
     source_of="an explicit request"
-elif [[ -s "$pin_file" ]]; then
+elif [[ -e "$pin_file" ]]; then
+    # -e and not -s. With -s, a zero-length pin reads as "no pin" and falls
+    # through to releases/latest, which is precisely the accident this file exists
+    # to prevent, and it is the worse of the two corruptions while the milder one
+    # (whitespace, or garbage) fails loudly. A truncated `> pin`, or someone
+    # clearing the file to mean "no pin", both land here; --no-pin is the
+    # deliberate way to say that, so an empty pin is an error rather than a drift.
     tag=$(tr -d '[:space:]' < "$pin_file")
     source_of="the pin in $pin_file"
+    [[ -n "$tag" ]] || {
+        printf 'macgrubernetes: error: the pin file %s is empty\n' "$pin_file" >&2
+        printf 'macgrubernetes: an empty pin would silently follow releases/latest, which is the accident this file exists to prevent\n' >&2
+        printf 'macgrubernetes: to unpin deliberately, remove the file; to install once without pinning, pass --no-pin\n' >&2
+        exit 1
+    }
 else
     api_url="https://api.github.com/repos/$repository/releases/latest"
     printf 'macgrubernetes: finding the latest release from %s\n' "$repository"
@@ -102,16 +114,19 @@ else
     }
     source_of="releases/latest"
 fi
-printf 'macgrubernetes: installing %s from %s\n' "$tag" "$source_of"
 # The same shape test applies to every source, not just the API response: a pin
 # file is a file, and it can be edited, truncated by a partial write, or pointed
-# at something that is not a release. Downloading an arbitrary tag path is how a
-# bad pin becomes a confusing 404 instead of a clear refusal.
+# at something that is not a release. It is doing a second job here -- anchoring
+# the pattern means a pin like build-1/../somewhere cannot reach the download URL
+# as path traversal, so the regex is a security check as well as a sanity one.
+# Validation runs before the decision is announced, so a refused pin does not
+# first be logged as though it were being installed.
 if [[ ! "$tag" =~ ^(build-[0-9]+|v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
     printf 'macgrubernetes: error: refusing unexpected release tag: %s\n' "$tag" >&2
     printf 'macgrubernetes: expected build-<N> or vX.Y.Z; fix or remove %s\n' "$pin_file" >&2
     exit 1
 fi
+printf 'macgrubernetes: installing %s from %s\n' "$tag" "$source_of"
 
 package_name="macgrubernetes-$tag-darwin-$package_arch"
 archive_name="$package_name.tar.gz"
@@ -180,6 +195,43 @@ done
 
 printf '\n'
 printf 'Macgrubernetes %s installed in %s\n\n' "$tag" "$install_dir"
+
+# A reinstall over a live node replaces the files and cannot restart the processes
+# that were started from them. The old maclet and darwin-vxlan keep running the
+# inodes they were launched on, so the node can report the new build while still
+# executing the old one. That used to be rare; pinning makes a deliberate
+# reinstall-over-running a normal operation, so it gets said out loud rather than
+# discovered later from a version mismatch.
+#
+# Matched by process name and then checked against the install path, not by
+# pgrep -f on the install dir. The latter matches the installer's own children
+# (mv, tar, and the shell running them all carry the path in their command line),
+# so it warned on a clean install with nothing running -- measured, not guessed.
+# ps -o comm= gives the executable path, which covers both the symlink form and
+# the releases/<tag>/bin form a process may have been started through.
+resolved_install_dir=$(cd "$install_dir" 2>/dev/null && pwd -P || printf '%s' "$install_dir")
+stale=""
+for name in maclet macker darwin-vxlan; do
+    for pid in $(pgrep -x "$name" 2>/dev/null || true); do
+        path=$(ps -p "$pid" -o comm= 2>/dev/null || true)
+        # ps -o comm= gives the full executable path on macOS and only a bare
+        # process name on Linux, so the path check silently never matched when
+        # tested here. Resolving /proc/<pid>/exe covers Linux; macOS has no /proc
+        # and the comm path is already what we need.
+        case "$path" in
+            */*) ;;
+            *) if [[ -r "/proc/$pid/exe" ]]; then path=$(readlink -f "/proc/$pid/exe" 2>/dev/null || true); fi ;;
+        esac
+        case "$path" in
+            "$install_dir"/*|"$resolved_install_dir"/*) stale="$stale $pid:$name" ;;
+        esac
+    done
+done
+if [[ -n "${stale# }" ]]; then
+    printf 'Warning: these processes are running from %s (pid:name%s).\n' "$install_dir" "$stale"
+    printf '  This install replaced files but did not restart them, so those processes are still the\n'
+    printf '  previous build. Restart the macgrubernetes daemon to make the node run %s.\n\n' "$tag"
+fi
 if [[ "$record_pin" == 1 ]]; then
     # Written after the install succeeds, so a failed run cannot leave a pin to a
     # build that was never installed. This is the whole point of the file: the
