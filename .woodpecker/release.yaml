@@ -85,7 +85,16 @@ steps:
       MACGRUBER_BUILD_ROOT: .build/arm64
     commands:
       - rustup target add aarch64-apple-darwin
-      - ./scripts/update.sh
+      # scripts/update.sh is deliberately NOT run here, and this is the one place the port changes behaviour
+      # rather than translating it. It resolves the highest build-* tag in each component repo at run time and
+      # rewrites the *tracked* components.lock (MACGRUBER_LOCKFILE defaults to $MACGRUBER_ROOT/components.lock,
+      # scripts/common.sh:6), and nothing in this pipeline commits the result back. So build-48 shipped
+      # `macker build-19` in its bundle while the repo it was cut from still said `build-13`: the release was
+      # not reproducible from its own lock, and the mutated tracked file was another reason go build stamped
+      # +dirty. GitHub Actions ran the same script, so the drift predates this port - build-48 is where it was
+      # first caught because build-48 is the first release whose lock could be diffed against a commit. The
+      # committed lock is now the contract: bump a component by running ./scripts/update.sh locally and
+      # committing what it writes, never as a side effect of publishing.
       - cat components.lock
       - make test
       - make build arch=arm64
