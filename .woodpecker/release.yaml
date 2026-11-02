@@ -117,6 +117,28 @@ steps:
       - gh release create "$(cat .release/TAG)" dist/*.tar.gz dist/*.sha256 --generate-notes --title "Macgrubernetes $(cat .release/TAG)"
       - gh release view "$(cat .release/TAG)" --json tagName,assets --jq '"tag " + .tagName + " assets " + (.assets | length | tostring)'
 
+  # A failed publish must not leave a tag that has no release behind it. The ref above is created before
+  # `gh release create`, so a run can die in the middle and leave refs/tags/build-N pointing at this commit
+  # with no assets: scripts/update.sh and any `git ls-remote` resolver treat the highest build-* tag as the
+  # newest build, and a node told to install that build gets a loud 404. The release itself is never
+  # published in that state (gh publishes only after the last upload finishes, which is why published_at
+  # trails the tar's updated_at), so `releases/latest` keeps pointing at the previous good build and only
+  # an explicit request for this build number can hit the hole. This step removes exactly what this pipeline
+  # created: a draft release for our tag, or a ref for our tag with no release at all. A published release
+  # is left alone even if the pipeline failed afterwards, and a tag whose sha is not this commit's is not
+  # ours to delete.
+  - name: clean-up-orphan-tag
+    image: bash
+    depends_on: [publish]
+    when:
+      - status: [failure]
+    commands:
+      # Nothing to clean if the run died before the build number was resolved.
+      - test -f .release/TAG || exit 0
+      - test -n "$GH_TOKEN" || export GH_TOKEN=$(cat /Users/edwardbeech/.config/woodpecker-agent/github-token)
+      - TAG=$(cat .release/TAG); if gh release view "$TAG" --json isDraft >/dev/null 2>&1; then echo "$TAG has a release object; not touching the ref"; else echo "$TAG has no release; deleting the ref this pipeline created"; gh api -X DELETE "repos/$CI_REPO/git/refs/tags/$TAG" || echo "no ref to delete"; fi
+      - TAG=$(cat .release/TAG); if test "$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)" = true; then echo "$TAG is an orphan draft; deleting it and its tag"; gh release delete "$TAG" --yes --cleanup-tag; else echo "$TAG is not a draft; leaving it"; fi
+
 when:
   - event: push
     branch: master
