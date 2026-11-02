@@ -51,21 +51,40 @@ steps:
     commands:
       # --paginate because the tag list is a paginated API and build-N is by construction the newest name;
       # missing a page would restart the numbering.
+      # gh needs a credential in every step that calls it and step env does not survive into the next step,
+      # so the fallback is repeated here rather than assumed.
+      - test -n "$GH_TOKEN" || export GH_TOKEN=$(cat /Users/edwardbeech/.config/woodpecker-agent/github-token)
       - gh --version | head -n 1
-      - gh api "repos/$CI_REPO/tags?per_page=100" --paginate | jq -r '.[].name' | grep -E '^build-[0-9]+$' | sort -V | tail -n 1 > build-number.txt
+      # The tag list goes to a file instead of straight into a pipe. macgrubernetes #3 had `gh: To use GitHub
+      # CLI in automation, set the GH_TOKEN environment variable` in its log, the pipeline's exit status came
+      # from jq, and the step "succeeded" by deriving build-1 on a repo that already has build-N tags. That
+      # is the failure mode to avoid: a masked gh error publishes a colliding tag, it does not stop the run.
+      - gh api "repos/$CI_REPO/tags?per_page=100" --paginate > tags.json
+      - jq -r '.[].name' tags.json | grep -E '^build-[0-9]+$' | sort -V | tail -n 1 > build-number.txt
       - test -s build-number.txt || echo 0 > build-number.txt
       - mkdir -p .release && echo "build-$(( $(cat build-number.txt) + 1 ))" > .release/TAG
       - echo "publishing $(cat .release/TAG), derived from the tags that already exist"
-      - gh api "repos/$CI_REPO/tags?per_page=100" --paginate | jq -r '.[].name' | grep -E '^build-[0-9]+$' | sort -V | tail -n 3
+      - jq -r '.[].name' tags.json | grep -E '^build-[0-9]+$' | sort -V | tail -n 3
 
   - name: build-arm64
     image: bash
     depends_on: [resolve-build-number]
+    environment:
+      # The whole step needs one build root, not just the make invocations. common.sh resolves a locked
+      # component as $MACGRUBER_BUILD_ROOT/src/<component>, and macgrubernetes #3 set the variable per
+      # command, so ./scripts/update.sh, make test and make build used .build/arm64 while the packaging
+      # script fell back to the default and died with: locked component is not synced:
+      # longhorn-nfs-gateway (run make sync). The GHA set it once for the job; this is the same thing.
+      MACGRUBER_GOARCH: arm64
+      MACGRUBER_RUST_TARGET: aarch64-apple-darwin
+      MACGRUBER_MACOSX_DEPLOYMENT_TARGET: ""
+      MACGRUBER_BUILD_ROOT: .build/arm64
     commands:
       - rustup target add aarch64-apple-darwin
-      - env MACGRUBER_GOARCH=arm64 MACGRUBER_RUST_TARGET=aarch64-apple-darwin MACGRUBER_MACOSX_DEPLOYMENT_TARGET= MACGRUBER_BUILD_ROOT=.build/arm64 ./scripts/update.sh
-      - env MACGRUBER_GOARCH=arm64 MACGRUBER_RUST_TARGET=aarch64-apple-darwin MACGRUBER_BUILD_ROOT=.build/arm64 make test
-      - env MACGRUBER_GOARCH=arm64 MACGRUBER_RUST_TARGET=aarch64-apple-darwin MACGRUBER_BUILD_ROOT=.build/arm64 make build arch=arm64
+      - ./scripts/update.sh
+      - cat components.lock
+      - make test
+      - make build arch=arm64
       - file .build/arm64/bin/*
       - env MACGRUBER_PACKAGE_ARCH=arm64 VERSION=$(cat .release/TAG) ./scripts/package-release.sh
 
