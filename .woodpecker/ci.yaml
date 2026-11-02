@@ -21,19 +21,20 @@
 #    pipeline/backend/local/command.go opens with "execCommands use step.Image as shell and run the
 #    commands in it" - the image field selects the shell (sh/bash/zsh). The toolchain is whatever the
 #    Mac has: go 1.24 (homebrew go@1.24) and rustup/cargo in ~/.cargo, both already proven by
-#    darwin-vxlan's own pipeline building aarch64 and x86_64 apple-darwin on this host.
+#    darwin-vxlan's own pipeline building aarch64 apple-darwin on this host.
 #
 # Component clones (components.lock points at private initialed85 repos) work because the local backend
 # gives each workflow an isolated HOME with the netrc the compiler injects for a trusted.security repo
 # (pipeline/backend/local/clone.go:120, backend-local-isolated-home defaults true), and HOME is exported
 # to every step of that workflow (local.go:159), not just the clone.
 #
-# What this does NOT reproduce from .github/workflows/ci.yml: the amd64 leg ran on macos-15-intel.
-# There is no Intel Mac in the cluster. The amd64 bundle is therefore cross-compiled on the arm64 host
-# (build-all.sh honours MACGRUBER_GOARCH and MACGRUBER_RUST_TARGET, and darwin-vxlan already proves
-# x86_64-apple-darwin links here), and the amd64 *tests* are not run - test-all.sh calls `go test`
-# without GOARCH, so an amd64 test run needs an Intel host. The arm64 `make test` is the gate; a real
-# Intel agent would add its own leg rather than pretending this one covers it.
+# What this deliberately does NOT reproduce from .github/workflows/ci.yml: the amd64 leg, which ran on a
+# macos-15-intel runner. The Intel/Catalina target went into the too-hard basket - the old Intel MacBook never
+# came back up - so there is no Intel machine to run the tests on, and a cross-compiled bundle nobody has
+# executed is an unproven artifact rather than a product. Cross-compiling it here was possible (build-all.sh
+# honours MACGRUBER_GOARCH and MACGRUBER_RUST_TARGET), which is why the leg is recorded here and in git
+# history instead of being quietly left in: if a working Intel Mac ever turns up, add it back with
+# MACGRUBER_MACOSX_DEPLOYMENT_TARGET=10.15 and its own test run.
 
 labels:
   platform: darwin/arm64
@@ -87,18 +88,6 @@ steps:
       # the GHA's last step: a bundle whose binaries are the wrong architecture is how a packaging
       # mistake would actually reach a user, so look at the mach-o headers
       - file .build/arm64/bin/*
-
-  - name: build-darwin-amd64
-    image: bash
-    depends_on: [build-darwin-arm64]
-    environment:
-      MACGRUBER_GOARCH: amd64
-      MACGRUBER_RUST_TARGET: x86_64-apple-darwin
-      MACGRUBER_MACOSX_DEPLOYMENT_TARGET: '10.15'
-      MACGRUBER_BUILD_ROOT: .build/amd64
-    commands:
-      - make build || { echo "retrying once - component fetch flake"; sleep 5; make build; }
-      - file .build/amd64/bin/*
 
 when:
   - event:

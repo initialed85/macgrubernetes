@@ -1,0 +1,86 @@
+# Build-and-publish on every push to master — the port of .github/workflows/release.yml (deleted in the same
+# commit). This one runs on the darwin lane (workflow-level labels) because the bundle is four Mach-O
+# binaries plus the Longhorn NFS gateway handoff files, and one of them (Skopeo) is Rust linked against the
+# macOS SDK; the Linux pool cannot link that.
+#
+# How the Actions shape maps onto Woodpecker here:
+#
+# - The arch matrix collapses to one leg. The Actions workflow built arm64 and amd64; only arm64 ships now,
+#   because the Intel/Catalina target is the too-hard basket (the old Intel MacBook never came back up) and a
+#   bundle nobody has executed is an unproven artifact, not a product. The publish step still takes everything
+#   in dist/, so adding Intel back later is a step, not a rewrite.
+# - Both remaining steps share one workspace (the per-workflow PVC), so the publish step sees the archive the
+#   build step wrote without upload/download-artifact. That is also why the legs are sequential rather than
+#   multiplied: a Woodpecker matrix multiplies the whole workflow, which would run the publish step once per
+#   leg and create two releases.
+# - Both remaining steps run on this Apple Silicon host. What used to be the second arch leg was cross-
+#   compiled here too - Go and Cargo produce x86_64-apple-darwin binaries on this machine - and that is
+#   exactly why it was dropped rather than kept: the Intel bundle existed only to run on Catalina, and the
+#   only thing that has ever executed it was a GitHub macos-15-intel runner, which costs an order of
+#   magnitude more than this free host.
+# - `softprops/action-gh-release` cannot run here at all: it is a Docker plugin, and the darwin agent uses
+#   the local backend, which turns `image:` into a host binary and cannot resolve settings/from_secret. So
+#   the publish step is `gh`, which is on the host but starts unauthenticated: the probe measured
+#   `gh version 2.96.0` and `You are not logged into any GitHub hosts`, and the local backend redirects HOME
+#   into a per-workflow directory anyway, so a host `gh auth login` could never be seen by a step. The
+#   credential therefore arrives as GH_TOKEN, taken from the agent pod's env once the maclet build carrying
+#   Ed's commit 1682606 (resolve env valueFrom secretKeyRef) is running on icarus-2.local, or from a host
+#   file if that is not deployed yet. The step uses whichever exists and nothing else, and never prints it.
+# - the `build-` plus run_number tag_name cannot be carried over literally: GitHub's run_number for this
+#   repo counts every workflow run ever (it is already in the 40s), while Woodpecker's pipeline counter
+#   restarts at 1 per repo. Deriving the next N from the build-N tags that exist keeps the numbering where
+#   the old workflow left it, and it is the same rule scripts/update.sh uses for component versions. The tag
+#   is created with `gh api .../git/refs` pointing at $CI_COMMIT_SHA rather than `git tag && git push`
+#   because the host's git has no GitHub credential, while GH_TOKEN is in the environment.
+# - generate_release_notes -> gh --generate-notes. `files: dist/*.tar.gz` -> shell globs on gh's argv, which
+#   is what softprops expanded server-side.
+# - The release *title* is kept ("Macgrubernetes build-N"), which is the one place the Linux-lane ports
+#   could not follow: settings: is not expanded and cannot read a file, so wp-gh-release could not take a
+#   derived title. On this lane gh is a shell command, so it can.
+#
+# VERSION here is the release string, not a semver: scripts/package-release.sh only requires it to be
+# non-empty and uses it to name the archive, so build-N packages exactly like it did under Actions.
+# labels is a workflow-level key in v3; on a step it is accepted for v2 compatibility and then ignored, so
+# every step here routes through the same block rather than each one carrying its own copy.
+labels:
+  platform: darwin/arm64
+
+steps:
+  - name: resolve-build-number
+    image: bash
+    commands:
+      # --paginate because the tag list is a paginated API and build-N is by construction the newest name;
+      # missing a page would restart the numbering.
+      - gh --version | head -n 1
+      - gh api "repos/$CI_REPO/tags?per_page=100" --paginate | jq -r '.[].name' | grep -E '^build-[0-9]+$' | sort -V | tail -n 1 > build-number.txt
+      - test -s build-number.txt || echo 0 > build-number.txt
+      - mkdir -p .release && echo "build-$(( $(cat build-number.txt) + 1 ))" > .release/TAG
+      - echo "publishing $(cat .release/TAG), derived from the tags that already exist"
+      - gh api "repos/$CI_REPO/tags?per_page=100" --paginate | jq -r '.[].name' | grep -E '^build-[0-9]+$' | sort -V | tail -n 3
+
+  - name: build-arm64
+    image: bash
+    depends_on: [resolve-build-number]
+    commands:
+      - rustup target add aarch64-apple-darwin
+      - env MACGRUBER_GOARCH=arm64 MACGRUBER_RUST_TARGET=aarch64-apple-darwin MACGRUBER_MACOSX_DEPLOYMENT_TARGET= MACGRUBER_BUILD_ROOT=.build/arm64 ./scripts/update.sh
+      - env MACGRUBER_GOARCH=arm64 MACGRUBER_RUST_TARGET=aarch64-apple-darwin MACGRUBER_BUILD_ROOT=.build/arm64 make test
+      - env MACGRUBER_GOARCH=arm64 MACGRUBER_RUST_TARGET=aarch64-apple-darwin MACGRUBER_BUILD_ROOT=.build/arm64 make build arch=arm64
+      - file .build/arm64/bin/*
+      - env MACGRUBER_PACKAGE_ARCH=arm64 VERSION=$(cat .release/TAG) ./scripts/package-release.sh
+
+  - name: publish
+    image: bash
+    depends_on: [build-arm64]
+    commands:
+      - test "$(ls dist/*.tar.gz | wc -l)" = 1
+      # GH_TOKEN from the agent pod if maclet resolved it, otherwise the host file the agent's own user owns
+      - test -n "$GH_TOKEN" || export GH_TOKEN=$(cat /Users/edwardbeech/.config/woodpecker-agent/github-token)
+      # the tag points at the commit this pipeline built; gh is the only thing here with a credential
+      - gh api repos/$CI_REPO/git/refs -f ref="refs/tags/$(cat .release/TAG)" -f sha="$CI_COMMIT_SHA"
+      - gh release create "$(cat .release/TAG)" dist/*.tar.gz dist/*.sha256 --generate-notes --title "Macgrubernetes $(cat .release/TAG)"
+      - gh release view "$(cat .release/TAG)" --json tagName,assets --jq '"tag " + .tagName + " assets " + (.assets | length | tostring)'
+
+when:
+  - event: push
+    branch: master
