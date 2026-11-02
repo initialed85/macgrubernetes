@@ -1,3 +1,5 @@
 .build/
 dist/
 .DS_Store
+/build-tags.txt
+/build-number.txt
