@@ -119,6 +119,10 @@ steps:
           printf 'cargo: '; cargo -V 2>/dev/null || echo none
           printf 'cc: '; cc --version 2>/dev/null | head -1 || echo none
           printf 'sdk: '; xcrun --show-sdk-version 2>/dev/null || echo none
+          # tar belongs in the toolchain record because packaging behaviour is now chosen by which options
+          # the local tar accepts, so a bsdtar or GNU tar change alters bundle bytes with no source change
+          # and no toolchain line to explain it. Same hole, already closed for the compilers.
+          printf 'tar: '; tar --version 2>/dev/null | head -1 || echo none
         } > dist/toolchain-$TAG.txt
         cat dist/toolchain-$TAG.txt
 

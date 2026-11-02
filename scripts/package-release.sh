@@ -70,16 +70,32 @@ if [[ -f "$MACGRUBER_ROOT/macgruber.png" ]]; then
 fi
 
 archive="$MACGRUBER_ROOT/dist/$package_name.tar.gz"
-# macOS tar is bsdtar, and it writes extended attributes two ways: AppleDouble ._ sidecar entries (build-57
-# carries 51 of them, including bin/._maclet) and LIBARCHIVE.xattr pax headers on the real files. Those
-# attributes include com.apple.provenance and com.apple.lastuseddate, whose values change when a file is
-# run, so a bundle built from an identical tree can still differ in bytes nothing in the repo controls. Six
-# identical releases only proved the host had been quiet, not that the packaging was clean.
+# macOS tar is bsdtar, and it writes extended attributes two ways: AppleDouble ._ sidecar entries (python
+# tarfile counts 50 members of them in build-57) and LIBARCHIVE.xattr/SCHILY.xattr pax headers on the real
+# files (100 of those). Those attributes include com.apple.provenance and com.apple.lastuseddate, whose
+# values can change when a file is run, so a bundle built from an identical tree can differ in bytes nothing
+# in the repo controls. Six identical releases proved the host had been quiet, not that the packaging was
+# clean. Worth stating precisely: com.apple.provenance read the same value in build-57 and build-58, so this
+# never actually varied in the published sequence, and the first fix removed the sidecars but left all 100
+# xattr headers in place. Two unverified runs are not a proof of stability, and the other direction is just
+# as true, so the point of removing them is that packaging should not depend on luck.
 # COPYFILE_DISABLE is honoured by macOS tar and simply ignored by GNU and busybox, so it is safe everywhere.
 # --no-xattrs is added only where the local tar understands it: the alpine packaging path runs busybox tar,
 # which does not, and an unknown option there would fail the build rather than be skipped.
 tar_extra=""
-if tar --help 2>&1 | grep -q -- '--no-xattrs'; then tar_extra="--no-xattrs"; fi
+# Probe by running the option, not by scraping tar --help. The help grep is what shipped first and it did
+# not work: build-58 still carries 100 LIBARCHIVE.xattr and SCHILY.xattr pax headers, so either macOS tar's
+# help does not mention --no-xattrs or the grep failed for another reason, and from Linux I cannot tell
+# which. Whether a tar accepts an option is answered by asking it to do something with the option, not by
+# reading what it says about itself. Order matters: --no-mac-metadata removes AppleDouble entries and xattr
+# headers together, --no-xattrs is the narrower fallback, and busybox tar on the alpine path accepts neither
+# and is skipped rather than failing the build.
+probe="$staging/.xattr-probe"
+printf '' > "$probe"
+for opt in --no-mac-metadata --no-xattrs; do
+  if (cd "$staging" && tar $opt -czf /dev/null .xattr-probe) 2>/dev/null; then tar_extra="$tar_extra $opt"; fi
+done
+rm -f "$probe"
 COPYFILE_DISABLE=1 tar $tar_extra -czf "$archive" -C "$staging" "$package_name"
 (
     cd "$MACGRUBER_ROOT/dist"
