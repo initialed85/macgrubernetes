@@ -54,6 +54,14 @@ fi
 cp "$darwin_vxlan_binary" "$MACGRUBER_BUILD_ROOT/bin/darwin-vxlan"
 
 log "building bundled skopeo $MACGRUBER_SKOPEO_VERSION ($MACGRUBER_GOOS/$MACGRUBER_GOARCH)"
+# -trimpath here is not cosmetic. maclet and macker are built with it two stanzas
+# above and are byte-identical between releases; skopeo was not, and the bundle
+# proved it: maclet, macker and darwin-vxlan hash the same across build-50 and
+# build-51 while skopeo does not, because the GOPATH below is a mktemp directory
+# and its name is baked into the binary (1,159 occurrences of
+# `macgrubernetes-skopeo-gopath.LpLBEp` in build-50's skopeo vs
+# `macgrubernetes-skopeo-gopath.JVr7Qy` in build-51's). The module version is
+# pinned, so this is the only thing making the bundle non-reproducible.
 # Recent Go releases reject GOBIN for cross-compiled `go install` binaries.
 # Let Go place the target binary under its architecture-specific GOPATH bin,
 # then copy the result into the architecture-specific bundle directory.
@@ -66,7 +74,7 @@ trap cleanup_skopeo_gopath EXIT
 CGO_ENABLED=0 GOOS="$MACGRUBER_GOOS" GOARCH="$MACGRUBER_GOARCH" \
     GOTOOLCHAIN="$MACGRUBER_GO_TOOLCHAIN" \
     GOPATH="$skopeo_gopath" \
-    go install -tags containers_image_openpgp \
+    go install -trimpath -tags containers_image_openpgp \
     "$MACGRUBER_SKOPEO_MODULE/cmd/skopeo@$MACGRUBER_SKOPEO_VERSION"
 skopeo_binary="$skopeo_gopath/bin/${MACGRUBER_GOOS}_${MACGRUBER_GOARCH}/skopeo"
 if [[ ! -x "$skopeo_binary" ]]; then

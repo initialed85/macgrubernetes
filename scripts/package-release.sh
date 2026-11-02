@@ -40,7 +40,13 @@ cp "$bin_dir/maclet" "$bin_dir/macker" "$bin_dir/darwin-vxlan" "$bin_dir/skopeo"
 # before the checksums below so the published .sha256 covers signed bytes.
 if command -v codesign >/dev/null 2>&1; then
     for binary in maclet macker darwin-vxlan skopeo; do
-        codesign --force --sign - "$package_root/bin/$binary"
+        # -i is not cosmetic either. Without it codesign derives the identifier from a hash of the
+        # content, so it changes whenever the binary does: build-50 and build-51 both reported
+        # `Identifier=-55554944`. That is fine for the signature check itself, but it means anything
+        # keyed on the identifier -- a TCC grant, a macOS firewall rule, a console filter -- has to be
+        # re-issued every release, and it will silently stop matching rather than fail loudly. A
+        # per-binary identifier is stable across releases and unique, so the identity outlives the bytes.
+        codesign --force --sign - -i "cc.initialed85.macgrubernetes.$binary" "$package_root/bin/$binary"
     done
 else
     echo "warning: no codesign on this host; bundling only the linker's own signature" >&2
