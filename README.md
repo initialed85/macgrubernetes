@@ -291,6 +291,15 @@ Review the resulting `components.lock` diff as an integration change. Builds
 never follow a moving branch without recording the resolved release tag and
 commit.
 
+Do-not-select tags (they exist upstream, they are valid builds, and they must not be
+pinned): macker `build-35` (7468fd2) and `build-36` (da1138e) ship operator-facing text
+asserting the nullfs claim the fleet retracted on 2026-11-25 - "this kernel does not
+register the null filesystem at all" - which is false (`nullfs` is registered and answers
+EPERM; `null`/bogus names draw 19=ENODEV). No released bundle ever pinned them: only the
+never-cut build-62 candidate lock touched build-36. Any swap must verify the installed
+build's `guidance` against the acceptance markers in NODE-MAINTENANCE.md before citing a
+green lifecycle result.
+
 ## Hot-swapping a binary on a darwin node
 
 `~/.macgrubernetes/bin` is a symlink into `releases/<tag>/bin`, so writing through it

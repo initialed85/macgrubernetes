@@ -73,3 +73,17 @@ codesign) and the ref automatically; it warns on the console when the ref is mis
 When building from a checkout instead of a CI artifact, the commit is
 `git rev-parse HEAD` **of the tree the binary was compiled from**, taken before shipping
 it. A green lifecycle stage may only be cited against a binary whose ref is in that log.
+
+## Acceptance markers after installing macker build-38 (866c98f) or later
+
+`macker volumes --format json` on the node must show:
+
+- `probe_status: "not_attempted_os"` (a decision, not an unknown), and
+- `guidance` containing `errno 19 is ENODEV on both Darwin and Linux` - proves the false
+  "ENOTSUP"/"kernel does not register nullfs" text is gone (builds before it printed that
+  false sentence into Pod status at admission time), and
+- `guidance` containing `EPROGMISMATCH (75, which Linux numbers as EOVERFLOW) for nfs` -
+  distinguishes 866c98f from its immediate predecessor ff7b159.
+
+If the installed binary's output lacks these, the wrong build landed; treat it as a failed
+install, not a cosmetic mismatch.
