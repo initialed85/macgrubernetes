@@ -87,3 +87,22 @@ it. A green lifecycle stage may only be cited against a binary whose ref is in t
 
 If the installed binary's output lacks these, the wrong build landed; treat it as a failed
 install, not a cosmetic mismatch.
+
+## Reading a node that has NOT been rolled yet
+
+A node still running an old macker build (build-33 `dee408c`, or the do-not-select builds
+35/36) prints a false kernel claim into every refused read-only hostPath Pod's status. The
+correction exists on such a node in exactly one place: maclet's own log line naming the
+falsified claim and the real mechanism (the type name `nullfs` is registered; `mount(2)` as
+root draws `EPERM` because its entry point is gated on `com.apple.private.nullfs_allow`
+with no superuser fallback). Grep the maclet log for either measured prefix:
+
+- `macker read-only volume capability for this node:`
+- `macker read-only volume guidance for this node:`
+
+The lifecycle stage (`test-native-workload-lifecycle.sh` in the maclet checkout) now rejects
+falsified claims in `.status.message` instead of accepting any mechanism text. Run against
+an unrolled node it must FAIL, naming the fix range - that red run is the live defect being
+instrumented, not a flake and not a reason to postpone the roll. Do not loosen the stage to
+make a pre-roll run green. Because that check lives in the script, always run it from a
+current maclet checkout (`git pull` first): the installed binary does not carry it.
