@@ -297,6 +297,16 @@ existed only as a dangling detached-HEAD object. build-69 is the first tag whose
 carries the stage script, so `test-native-workload-lifecycle.sh` must run from a checkout
 at build-69 or later.
 
+maclet `build-71` (8304a4c) on darwin, measured on the real agent host (icarus-2, go1.26.5
+darwin/arm64): full `go test ./pkg/maclet/` suite **3/3 green** and
+`TestNodeHeartbeatRecordsRenewedNodeAndLease` 10/10 green in isolation, so bundle CI
+pipeline 1375's heartbeat failure (fake-API round exceeding the test's 30ms schedule, log
+lines 49-51) is an environment flake, not a build-71 defect. One trap for anyone running
+maclet's suite over a bare ssh session on the node: maclet shells out to `sysctl`, which
+lives in `/sbin`, so a PATH without `/usr/sbin:/sbin` fails
+`TestReadNodeWorkingSetOnDarwin` with "sysctl: executable file not found" - a harness
+artifact, not a maclet bug.
+
 Do-not-select tags (they exist upstream, they are valid builds, and they must not be
 pinned): macker `build-33` (dee408c) and `build-34` (fe460eb) put the retracted false
 kernel claim - "this kernel does not register the null filesystem at all" - in the
