@@ -88,6 +88,14 @@ it. A green lifecycle stage may only be cited against a binary whose ref is in t
 If the installed binary's output lacks these, the wrong build landed; treat it as a failed
 install, not a cosmetic mismatch.
 
+Three pieces of evidence, three different jobs - do not conflate them (macker measured
+2026-11-26 at head `7837864`): the `HOST:CONTAINER[:ro]` marker in `run --help` is NOT
+platform-gated (a linux/amd64 build prints it too), so it proves only that the build ships
+the `:ro` argument syntax; the sha256 pairing in `provenance.log` plus the
+`MACGRUB_PROVENANCE_REF` entry is the identity and platform evidence; and `probe_status`
+is the enforcement evidence. Absence of the marker still means the wrong build - its
+presence proves nothing beyond syntax.
+
 ## Reading a node that has NOT been rolled yet
 
 A node still running an old macker build (build-33 `dee408c`, or the do-not-select builds
