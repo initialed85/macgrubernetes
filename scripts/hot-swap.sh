@@ -37,7 +37,21 @@ cp "$src" "$live_dir/$name.new"
 codesign -f -s - "$live_dir/$name.new"
 codesign -v "$live_dir/$name.new"
 mv "$live_dir/$name.new" "$live_dir/$name"
-printf 'hot-swap: installed %s/%s sha256 %s\n' "$bin_dir" "$name" "$(shasum -a 256 "$bin_dir/$name" | awk '{print $1}')"
+installed_sha=$(shasum -a 256 "$bin_dir/$name" | awk '{print $1}')
+printf 'hot-swap: installed %s/%s sha256 %s\n' "$bin_dir" "$name" "$installed_sha"
+
+# Provenance pairing (macker's rule, adopted here): a binary sha256 alone cannot certify a
+# green lifecycle stage - codesign -s - changes the bytes, so the installed hash is not the
+# CI artifact hash and is certainly not a source commit. Record timestamp, component, the
+# staged source hash, the installed hash, and the source commit/build tag together.
+# Set MACGRUB_PROVENANCE_REF='<component> <build-tag> <commit>' when swapping anything built
+# from a repo; without it the swap is logged as unattributed and the next audit can't map it.
+ref=${MACGRUB_PROVENANCE_REF:-}
+[[ -n "$ref" ]] || printf 'hot-swap: WARNING MACGRUB_PROVENANCE_REF unset - recording unattributed swap\n' >&2
+printf '%s\t%s\tsource-sha256=%s\tinstalled-sha256=%s\tref=%s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$name" \
+    "$(shasum -a 256 "$src" | awk '{print $1}')" "$installed_sha" \
+    "${ref:-<unknown>}" >> "$install_dir/provenance.log"
 
 if [[ "$mode" != "--no-kickstart" ]]; then
     label=cc.initialed85.$name

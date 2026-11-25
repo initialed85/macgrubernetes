@@ -51,3 +51,25 @@ If a hot-swap clobbered a release's bytes (build-61's `bin/maclet` was clobbered
 way on 2026-11-25 and never restored from the node), the release archive is the source
 of truth: download `macgrubernetes-build-<n>-darwin-arm64.tar.gz`, check it against the
 `.sha256` asset, and copy `bin/maclet` back with the copy → sign → atomic rename rule.
+
+## Provenance pairing (rule adopted from macker, 2026-11-25)
+
+A binary sha256 on its own certifies nothing. `codesign -f -s -` rewrites the Mach-O's
+signature, so the installed hash differs from the CI artifact hash, and neither one is a
+source commit. Concrete failure seen tonight: a lifecycle stage was graded green against
+a macker stamped `7a3b42ae…`, which is not a commit in macker's history at all — it was
+the *installed binary hash* of build-33 (source commit `dee408c`), with no pairing recorded.
+
+So every swap records a triple — **commit + build tag + hashes** — in
+`~/.macgrubernetes/provenance.log`:
+
+```bash
+MACGRUB_PROVENANCE_REF='macker build-38 866c98fd4b24173135fd3e0d76ccec5195e01fab' \
+    ~/.macgrubernetes/bin/hot-swap.sh macker /tmp/macker-866c98f
+```
+
+`hot-swap.sh` appends timestamp, component, staged source hash, installed hash (post-
+codesign) and the ref automatically; it warns on the console when the ref is missing.
+When building from a checkout instead of a CI artifact, the commit is
+`git rev-parse HEAD` **of the tree the binary was compiled from**, taken before shipping
+it. A green lifecycle stage may only be cited against a binary whose ref is in that log.
