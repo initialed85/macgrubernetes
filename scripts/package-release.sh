@@ -61,9 +61,16 @@ cp "$longhorn_nfs_gateway_source/deploy/README.md" "$package_root/gateway/README
 cp "$MACGRUBER_ROOT/components.lock" "$package_root/"
 cp "$MACGRUBER_ROOT/scripts/macgrubernetes.sh" "$package_root/macgrubernetes.sh"
 chmod 0755 "$package_root/macgrubernetes.sh"
+# hot-swap.sh travels in the release so the sanctioned swap procedure is ON the node,
+# next to the binaries it protects (NODE-MAINTENANCE.md explains why cp is not it).
+cp "$MACGRUBER_ROOT/scripts/hot-swap.sh" "$package_root/bin/hot-swap.sh"
+chmod 0755 "$package_root/bin/hot-swap.sh"
 printf '%s\n' "$version" > "$package_root/VERSION"
 if [[ -f "$MACGRUBER_ROOT/README.md" ]]; then
     cp "$MACGRUBER_ROOT/README.md" "$package_root/"
+fi
+if [[ -f "$MACGRUBER_ROOT/NODE-MAINTENANCE.md" ]]; then
+    cp "$MACGRUBER_ROOT/NODE-MAINTENANCE.md" "$package_root/"
 fi
 if [[ -f "$MACGRUBER_ROOT/macgruber.png" ]]; then
     cp "$MACGRUBER_ROOT/macgruber.png" "$package_root/"

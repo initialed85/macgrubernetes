@@ -291,6 +291,18 @@ Review the resulting `components.lock` diff as an integration change. Builds
 never follow a moving branch without recording the resolved release tag and
 commit.
 
+## Hot-swapping a binary on a darwin node
+
+`~/.macgrubernetes/bin` is a symlink into `releases/<tag>/bin`, so writing through it
+rewrites a released build's bytes in place; on macOS that codesign-kills the binary
+(`CODESIGNING … "Invalid Page"` crash reports, maclet's 2026-11-25 incident on icarus-2).
+The rules and the sanctioned procedure - copy to `.new`, `codesign -f -s -`, atomic `mv`,
+kickstart with a ThrottleInterval wait - are in `NODE-MAINTENANCE.md`, and
+`scripts/hot-swap.sh` (shipped in the release) performs them. A hot-swap is an emergency
+path: it makes the installed release stop matching its published checksum, and the
+release archive plus its `.sha256` asset are then the only source of truth for restoring
+the original bytes.
+
 ## Continuous integration
 
 GitHub Actions runs `make test` and `make build` for both Darwin/arm64 and

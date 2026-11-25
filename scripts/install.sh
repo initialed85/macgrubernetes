@@ -178,6 +178,11 @@ mv "$package_root" "$installed_release"
 # previous installer layout cannot swallow the replacement symlink into a bin/
 # directory.
 replace_link() {
+    # Symlink-swap atomics; note what the links MEAN for anyone tempted to write a
+    # binary directly: `bin` points into releases/<tag>/bin, so `cp new bin/maclet`
+    # rewrites a released build's live inode and macOS codesign-kills every exec after
+    # that. NODE-MAINTENANCE.md carries the measured incident; scripts/hot-swap.sh is
+    # the sanctioned copy+codesign+mv path.
     local link=$1
     local target=$2
     local temporary_link="$install_dir/.$link.new"
