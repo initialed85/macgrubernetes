@@ -292,13 +292,16 @@ never follow a moving branch without recording the resolved release tag and
 commit.
 
 Do-not-select tags (they exist upstream, they are valid builds, and they must not be
-pinned): macker `build-35` (7468fd2) and `build-36` (da1138e) ship operator-facing text
-asserting the nullfs claim the fleet retracted on 2026-11-25 - "this kernel does not
-register the null filesystem at all" - which is false (`nullfs` is registered and answers
-EPERM; `null`/bogus names draw 19=ENODEV). No released bundle ever pinned them: only the
-never-cut build-62 candidate lock touched build-36. Any swap must verify the installed
-build's `guidance` against the acceptance markers in NODE-MAINTENANCE.md before citing a
-green lifecycle result.
+pinned): macker `build-33` (dee408c) and `build-34` (fe460eb) put the retracted false
+kernel claim - "this kernel does not register the null filesystem at all" - in the
+Pod-facing `reason` that maclet copies verbatim into Pod status (measured live on
+icarus-2: a refused :ro Pod's Pending message contained that exact sentence); fe460eb's
+test even asserts the phrase, test-locking the wrong claim. macker `build-35` (7468fd2)
+and `build-36` (da1138e) additionally carry the false "ENOTSUP" guidance wording. The
+correct text lands at ff7b159-onward. No released bundle ever pinned 35/36: only the
+never-cut build-62 candidate lock touched 36. Any swap must verify the installed build's
+`guidance` against the acceptance markers in NODE-MAINTENANCE.md before citing a green
+lifecycle result.
 
 ## Hot-swapping a binary on a darwin node
 
