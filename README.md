@@ -307,13 +307,33 @@ lives in `/sbin`, so a PATH without `/usr/sbin:/sbin` fails
 `TestReadNodeWorkingSetOnDarwin` with "sysctl: executable file not found" - a harness
 artifact, not a maclet bug.
 
+maclet `build-73` (7fd7e86) supersedes build-71 as the pinned maclet, on a gate defect
+measured on build-71 itself: `hasNullfs()` treated the `vfs.generic.nullfs` sysctl oid as
+a positive grant, so with `exists()=false, kernelFeature()=true` the oid **alone** granted
+`:ro` with no mount helper and no filesystem bundle - this node's exact shape (registered
+code, refused mount). `7fd7e86` accepts only a route a mount call or helper can take
+(helper binary, or a bundle `mount(8)` can exec); the oid now affects only the refusal's
+wording, which also removes maclet's own unmeasured "this kernel does build nullfs"
+sentence from Pod status. CI pipeline 1385 green on Linux and on a simulated macOS 26
+runner whose kernel exposes the oid. Tag-numbering rule, maclet's own: **never cite a hand
+number, take the CI-published tag** - `build-72` is a CI re-tag of build-71's 8304a4c,
+`build-73` is CI's tag for 7fd7e86, and hand-tags are redundant noise.
+
 Do-not-select tags (they exist upstream, they are valid builds, and they must not be
 pinned): macker `build-33` (dee408c) and `build-34` (fe460eb) put the retracted false
 kernel claim - "this kernel does not register the null filesystem at all" - in the
 Pod-facing `reason` that maclet copies verbatim into Pod status (measured live on
 icarus-2: a refused :ro Pod's Pending message contained that exact sentence); fe460eb's
 test even asserts the phrase, test-locking the wrong claim. macker `build-35` (7468fd2)
-and `build-36` (da1138e) additionally carry the false "ENOTSUP" guidance wording. The
+and `build-36` (da1138e) carry the false "ENOTSUP" wording, and the two fields it lives in
+fail differently (maclet's correction, 2026-11-25): the lifecycle stage greps
+`.status.message` on the refused Pod, which is macker's **`reason`**, and build-36's reason
+is honest ("…ships no null filesystem bundle… EPERM… private entitlement…"), so the stage
+**passes build-36**; the false sentence sits once in build-36's `guidance` field, where
+maclet's falsified-claim log fires. Choosing 36 is therefore not stage-blocked - the node
+log and the guidance audit are what catch it - and build-41 remains the recommendation
+because it is clean in both fields (guidance states "errno 19 is ENODEV on both Darwin and
+Linux", zero false occurrences). The
 correct text lands at ff7b159-onward. macker `build-40` (2250a51) is stale rather than
 false-poisoned: its guidance reports the bindfs entitlement refusal as a measured fact,
 which the node measurement falsified - bindfs draws ENODEV, the name is unregistered - so
