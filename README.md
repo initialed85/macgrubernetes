@@ -291,6 +291,12 @@ Review the resulting `components.lock` diff as an integration change. Builds
 never follow a moving branch without recording the resolved release tag and
 commit.
 
+maclet `build-69` (c4f4427): maclet master sat at build-68's 2a321d5 while `1eab383`
+(the lifecycle-stage honesty change - reject falsified mechanism claims in Pod status)
+existed only as a dangling detached-HEAD object. build-69 is the first tag whose checkout
+carries the stage script, so `test-native-workload-lifecycle.sh` must run from a checkout
+at build-69 or later.
+
 Do-not-select tags (they exist upstream, they are valid builds, and they must not be
 pinned): macker `build-33` (dee408c) and `build-34` (fe460eb) put the retracted false
 kernel claim - "this kernel does not register the null filesystem at all" - in the
@@ -298,10 +304,13 @@ Pod-facing `reason` that maclet copies verbatim into Pod status (measured live o
 icarus-2: a refused :ro Pod's Pending message contained that exact sentence); fe460eb's
 test even asserts the phrase, test-locking the wrong claim. macker `build-35` (7468fd2)
 and `build-36` (da1138e) additionally carry the false "ENOTSUP" guidance wording. The
-correct text lands at ff7b159-onward. No released bundle ever pinned 35/36: only the
-never-cut build-62 candidate lock touched 36. Any swap must verify the installed build's
-`guidance` against the acceptance markers in NODE-MAINTENANCE.md before citing a green
-lifecycle result.
+correct text lands at ff7b159-onward. macker `build-40` (2250a51) is stale rather than
+false-poisoned: its guidance reports the bindfs entitlement refusal as a measured fact,
+which the node measurement falsified - bindfs draws ENODEV, the name is unregistered - so
+treat 40 as superseded, and build-41 as the first tag whose operator-facing text is the
+measured truth. No released bundle ever pinned 35/36: only the never-cut build-62
+candidate lock touched 36. Any swap must verify the installed build's `guidance` against
+the acceptance markers in NODE-MAINTENANCE.md before citing a green lifecycle result.
 
 ## Hot-swapping a binary on a darwin node
 

@@ -64,8 +64,8 @@ So every swap records a triple — **commit + build tag + hashes** — in
 `~/.macgrubernetes/provenance.log`:
 
 ```bash
-MACGRUB_PROVENANCE_REF='macker build-38 866c98fd4b24173135fd3e0d76ccec5195e01fab' \
-    ~/.macgrubernetes/bin/hot-swap.sh macker /tmp/macker-866c98f
+MACGRUB_PROVENANCE_REF='macker build-41 78378640a8307b273bb3ba1574257c26bf26d7b1' \
+    ~/.macgrubernetes/bin/hot-swap.sh macker /tmp/macker-7837864
 ```
 
 `hot-swap.sh` appends timestamp, component, staged source hash, installed hash (post-
@@ -74,7 +74,7 @@ When building from a checkout instead of a CI artifact, the commit is
 `git rev-parse HEAD` **of the tree the binary was compiled from**, taken before shipping
 it. A green lifecycle stage may only be cited against a binary whose ref is in that log.
 
-## Acceptance markers after installing macker build-38 (866c98f) or later
+## Acceptance markers after installing macker build-41 (7837864) or later
 
 `macker volumes --format json` on the node must show:
 
@@ -83,7 +83,10 @@ it. A green lifecycle stage may only be cited against a binary whose ref is in t
   "ENOTSUP"/"kernel does not register nullfs" text is gone (builds before it printed that
   false sentence into Pod status at admission time), and
 - `guidance` containing `EPROGMISMATCH (75, which Linux numbers as EOVERFLOW) for nfs` -
-  distinguishes 866c98f from its immediate predecessor ff7b159.
+  distinguishes 866c98f-onward from its immediate predecessor ff7b159, and
+- `guidance` containing `the type name bindfs is not registered at all` - present from
+  build-41 only: proves the operator-facing text is the measured bindfs truth (measured on
+  icarus-2 with maclet's probe at 2a321d5) rather than build-40's source-reading-as-fact.
 
 If the installed binary's output lacks these, the wrong build landed; treat it as a failed
 install, not a cosmetic mismatch.
