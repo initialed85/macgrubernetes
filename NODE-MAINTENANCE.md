@@ -76,6 +76,15 @@ it. A green lifecycle stage may only be cited against a binary whose ref is in t
 
 ## Acceptance markers after installing macker build-41 (7837864) or later
 
+APPLIED on icarus-2 at 2026-11-26T04:27:51Z (maclet build-73 `7fd7e86` + macker build-41 `7837864`, CI artifacts
+from GitHub release tarballs verified against published `.sha256` assets first; installed post-codesign shas maclet
+`2e8ca75f…` (also at `/usr/local/bin/maclet`) and macker `4a7d904c…`, paired with artifact shas `1391b5fe…` /
+`3e023d17…` in `provenance.log`). All four markers below measured present; `macker volumes --probe --format json`
+reports `probe_status: "not_attempted_os"`, and a fresh `:ro` hostPath Pod is refused with the honest
+entitlement-gate text (no "kernel does not register" claim). One wording note for anyone reading Pod status: build-41
+still prefixes refusals with `probe not attempted:` — admission keeps the blockage shortcut and does not probe — but
+the text after the colon is now the true mechanism.
+
 `macker volumes --format json` on the node must show:
 
 - `probe_status: "not_attempted_os"` (a decision, not an unknown), and
